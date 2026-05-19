@@ -1,0 +1,11 @@
+# WordPress + IDE
+.DS_Store
+*.log
+*.bak
+.idea/
+.vscode/
+
+# Build artefacts (for if we ever add a build step)
+node_modules/
+vendor/
+*.zip
