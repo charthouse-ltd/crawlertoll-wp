@@ -2,7 +2,7 @@
 Contributors: charthouse
 Tags: ai, crawler, gptbot, claudebot, pay-per-crawl, rsl, robots-txt, http-402, web-bot-auth, monetization
 Requires at least: 6.0
-Tested up to: 6.7
+Tested up to: 7.0
 Requires PHP: 7.4
 Stable tag: 0.1.0
 License: Apache-2.0 OR GPL-2.0-or-later

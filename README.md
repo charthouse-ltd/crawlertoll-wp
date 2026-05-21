@@ -20,7 +20,7 @@
 
 ```bash
 cd wp-content/plugins
-git clone https://github.com/nhrzxxw9dn-web/crawlertoll-wp crawlertoll
+git clone https://github.com/charthouse-ltd/crawlertoll-wp crawlertoll
 ```
 
 Then activate via the WordPress admin.
@@ -168,8 +168,8 @@ Same `decide()` engine, different deployment surface:
 - [`@crawlertoll/hono`](https://www.npmjs.com/package/@crawlertoll/hono) — Cloudflare Workers, Bun, Deno, Vercel Edge, Node
 - [`@crawlertoll/next`](https://www.npmjs.com/package/@crawlertoll/next) — Next.js 14+15
 - [`@crawlertoll/publisher`](https://www.npmjs.com/package/@crawlertoll/publisher) — Publisher CLI + SDK
-- [`crawlertoll-cloudflare-template`](https://github.com/nhrzxxw9dn-web/crawlertoll-cloudflare-template) — Fork-and-deploy CF Workers template
-- [`crawlertoll-vercel-template`](https://github.com/nhrzxxw9dn-web/crawlertoll-vercel-template) — Fork-and-deploy Vercel Edge template
+- [`crawlertoll-cloudflare-template`](https://github.com/charthouse-ltd/crawlertoll-cloudflare-template) — Fork-and-deploy CF Workers template
+- [`crawlertoll-vercel-template`](https://github.com/charthouse-ltd/crawlertoll-vercel-template) — Fork-and-deploy Vercel Edge template
 
 ---
 
