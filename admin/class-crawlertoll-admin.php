@@ -14,6 +14,26 @@ class CrawlerToll_Admin {
 	public function register() {
 		add_action( 'admin_menu', array( $this, 'register_menu' ) );
 		add_action( 'admin_init', array( $this, 'register_settings' ) );
+		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
+	}
+
+	public function enqueue_assets( $hook ) {
+		if ( 'settings_page_crawlertoll' !== $hook ) {
+			return;
+		}
+		wp_enqueue_style(
+			'crawlertoll-admin',
+			plugin_dir_url( CRAWLERTOLL_PLUGIN_FILE ) . 'assets/admin.css',
+			array(),
+			CRAWLERTOLL_VERSION
+		);
+		wp_enqueue_script(
+			'crawlertoll-admin',
+			plugin_dir_url( CRAWLERTOLL_PLUGIN_FILE ) . 'assets/admin.js',
+			array(),
+			CRAWLERTOLL_VERSION,
+			true
+		);
 	}
 
 	public function register_menu() {
@@ -71,7 +91,8 @@ class CrawlerToll_Admin {
 			wp_die( esc_html__( 'Insufficient permissions.', 'crawlertoll' ) );
 		}
 		$settings = crawlertoll_get_settings();
-		$rails = array(
+		$bots     = CrawlerToll_Bot_Catalogue::all();
+		$rails    = array(
 			'x402'            => 'x402 — Coinbase + LF stablecoin rail',
 			'tollbit'         => 'TollBit hosted paywall',
 			'skyfire'         => 'Skyfire KYAPay token',
@@ -80,6 +101,22 @@ class CrawlerToll_Admin {
 			'context-license' => 'Per /.well-known/context-license.json',
 			'custom'          => 'Custom',
 		);
+
+		// Count bot categories for the status cards.
+		$category_counts = array();
+		foreach ( $bots as $bot ) {
+			$cat = $bot['category'];
+			$category_counts[ $cat ] = ( $category_counts[ $cat ] ?? 0 ) + 1;
+		}
+
+		// Parse the policy to count active groups.
+		$policy_data = CrawlerToll_RSL_Parser::parse( $settings['policy'] );
+		$active_bots = 0;
+		$active_groups = count( $policy_data['groups'] );
+		foreach ( $policy_data['groups'] as $group ) {
+			$active_bots += count( $group['user_agents'] );
+		}
+
 		include CRAWLERTOLL_PLUGIN_DIR . 'admin/views/settings.php';
 	}
 }

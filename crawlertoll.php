@@ -3,7 +3,7 @@
  * Plugin Name:       CrawlerToll
  * Plugin URI:        https://crawlertoll.com
  * Description:       AI-crawler enforcement for WordPress. Detects AI crawlers (GPTBot, ClaudeBot, PerplexityBot, Google-Extended, +25 more), applies RSL 1.0 policy, and issues HTTP 402 with a structured payment offer. Vendor-neutral; works with TollBit, Skyfire, x402, Cloudflare Pay Per Crawl, and Stripe ACP.
- * Version:           0.1.0
+ * Version:           0.1.1
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            Charthouse Ltd
@@ -20,7 +20,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit; // No direct file access.
 }
 
-define( 'CRAWLERTOLL_VERSION', '0.1.0' );
+define( 'CRAWLERTOLL_VERSION', '0.1.1' );
 define( 'CRAWLERTOLL_PLUGIN_FILE', __FILE__ );
 define( 'CRAWLERTOLL_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'CRAWLERTOLL_OPTION_KEY', 'crawlertoll_settings' );

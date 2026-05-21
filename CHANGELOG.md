@@ -2,6 +2,17 @@
 
 All notable changes to the CrawlerToll WordPress plugin are documented here. Follows [Semantic Versioning](https://semver.org/).
 
+## [0.1.1] — 2026-05-21
+
+### Added
+
+- **Modern admin dashboard UI.** Status cards showing enforcement state, crawler count, active policy groups, and per-crawl price. Toggle switch for enable/disable. Bot catalogue browser with category colour coding and text filter. Live curl tester to simulate crawler requests against the current policy. Admin CSS/JS enqueued only on the CrawlerToll settings page.
+
+### Changed
+
+- Admin class now enqueues `assets/admin.css` and `assets/admin.js` on the settings page.
+- `render_page()` passes bot catalogue data and parsed policy stats to the view for the dashboard cards.
+
 ## [0.1.0] — 2026-05-19
 
 Initial public release. Ships alongside the `@crawlertoll/*` npm family.

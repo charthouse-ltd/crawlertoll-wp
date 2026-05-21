@@ -4,7 +4,7 @@ Tags: ai, crawler, gptbot, claudebot, pay-per-crawl, rsl, robots-txt, http-402, 
 Requires at least: 6.0
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 0.1.0
+Stable tag: 0.1.1
 License: Apache-2.0 OR GPL-2.0-or-later
 License URI: https://www.apache.org/licenses/LICENSE-2.0
 
@@ -94,6 +94,13 @@ Standard WordPress: Plugins → Deactivate → Delete. The plugin removes its ow
 2. Curl output showing a 402 response to a GPTBot User-Agent.
 
 == Changelog ==
+
+= 0.1.1 — 2026-05-21 =
+
+* New modern admin dashboard UI with status cards, bot catalogue browser, and live curl tester.
+* Performance: admin assets enqueued only on the CrawlerToll settings page.
+* Improved toggle switch for enable/disable.
+* Bot catalogue shows all 30+ tracked crawlers with category colour coding and filter.
 
 = 0.1.0 — 2026-05-19 =
 
