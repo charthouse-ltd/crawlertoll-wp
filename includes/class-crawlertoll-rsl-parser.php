@@ -47,8 +47,11 @@ class CrawlerToll_RSL_Parser {
 				case 'user-agent':
 					$ua = strtolower( $value );
 					if ( $current === null || ! $in_ua_header ) {
+						// Close previous group before starting a new one.
+						if ( $current !== null ) {
+							$groups[] = $current;
+						}
 						$current = self::new_group();
-						$groups[] = &$current;
 						$in_ua_header = true;
 					}
 					$current['user_agents'][] = $ua;
@@ -58,7 +61,6 @@ class CrawlerToll_RSL_Parser {
 					$in_ua_header = false;
 					if ( $current === null ) {
 						$current = self::new_group();
-						$groups[] = &$current;
 					}
 					if ( $value !== '' ) {
 						$current['disallow'][] = $value;
@@ -69,7 +71,6 @@ class CrawlerToll_RSL_Parser {
 					$in_ua_header = false;
 					if ( $current === null ) {
 						$current = self::new_group();
-						$groups[] = &$current;
 					}
 					if ( $value !== '' ) {
 						$current['allow'][] = $value;
@@ -80,7 +81,6 @@ class CrawlerToll_RSL_Parser {
 					$in_ua_header = false;
 					if ( $current === null ) {
 						$current = self::new_group();
-						$groups[] = &$current;
 					}
 					if ( is_numeric( $value ) && (float) $value >= 0 ) {
 						$current['crawl_delay'] = (float) $value;
@@ -95,7 +95,6 @@ class CrawlerToll_RSL_Parser {
 					$in_ua_header = false;
 					if ( $current === null ) {
 						$current = self::new_group();
-						$groups[] = &$current;
 					}
 					$current['license'] = $value;
 					break;
@@ -104,7 +103,6 @@ class CrawlerToll_RSL_Parser {
 					$in_ua_header = false;
 					if ( $current === null ) {
 						$current = self::new_group();
-						$groups[] = &$current;
 					}
 					$current['permits'] = array_merge( $current['permits'], self::token_list( $value ) );
 					break;
@@ -113,7 +111,6 @@ class CrawlerToll_RSL_Parser {
 					$in_ua_header = false;
 					if ( $current === null ) {
 						$current = self::new_group();
-						$groups[] = &$current;
 					}
 					$current['prohibits'] = array_merge( $current['prohibits'], self::token_list( $value ) );
 					break;
@@ -122,7 +119,6 @@ class CrawlerToll_RSL_Parser {
 					$in_ua_header = false;
 					if ( $current === null ) {
 						$current = self::new_group();
-						$groups[] = &$current;
 					}
 					$comp = self::parse_compensation( $value );
 					if ( $comp !== null ) {
@@ -134,13 +130,15 @@ class CrawlerToll_RSL_Parser {
 					$in_ua_header = false;
 					if ( $current === null ) {
 						$current = self::new_group();
-						$groups[] = &$current;
 					}
 					$current['standards'][] = $value;
 					break;
 			}
 		}
-		unset( $current );
+		// Close the last group.
+		if ( $current !== null ) {
+			$groups[] = $current;
+		}
 
 		return array(
 			'groups'   => $groups,

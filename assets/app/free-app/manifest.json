@@ -1,0 +1,12 @@
+{
+  "src/free/main.tsx": {
+    "file": "free-app.DWudGz-G.js",
+    "name": "main",
+    "src": "src/free/main.tsx",
+    "isEntry": true
+  },
+  "style.css": {
+    "file": "free-app.DI9k5CzF.css",
+    "src": "style.css"
+  }
+}

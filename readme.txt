@@ -1,14 +1,14 @@
 === CrawlerToll ===
 Contributors: charthouse
-Tags: ai, crawler, gptbot, claudebot, pay-per-crawl, rsl, robots-txt, http-402, web-bot-auth, monetization
+Tags: ai-crawler, gptbot, claudebot, pay-per-crawl, http-402, x402, rsl, robots-txt, bot-blocker, ai-content-licensing, perplexitybot, context-license
 Requires at least: 6.0
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 0.1.1
+Stable tag: 0.2.0
 License: Apache-2.0 OR GPL-2.0-or-later
 License URI: https://www.apache.org/licenses/LICENSE-2.0
 
-AI-crawler enforcement for WordPress. Detects AI crawlers, applies RSL 1.0 policy, issues HTTP 402 with a structured payment offer.
+Make AI crawlers pay for your content. Detects 30+ AI bots, applies RSL 1.0 policy, and issues HTTP 402 Payment Required — vendor-neutral, works with Cloudflare, TollBit, Skyfire, x402, or Stripe.
 
 == Description ==
 
@@ -30,6 +30,29 @@ CrawlerToll is **vendor-neutral**. It ships adapters TO commercial backends (Tol
 * **Settle payments.** It emits the 402 with a payment offer; actual settlement happens on whichever rail you chose.
 * **Replace Cloudflare Pay Per Crawl.** If you have access to PPC's closed beta on a Cloudflare Enterprise plan, you can use both — PPC at the CDN tier, this plugin at the WordPress application tier for finer-grained policy.
 * **Block scrapers that ignore robots.txt and don't identify themselves.** Headless-browser scraping (Bright Data, Oxylabs, etc.) requires edge-level enforcement that a WordPress plugin can't provide. CrawlerToll detects identified crawlers; Cloudflare Bot Management or similar handles the rest.
+
+= CrawlerToll Pro =
+
+The free plugin detects crawlers, applies your policy, and issues 402s — for one flat price, forever. **CrawlerToll Pro** turns that into a revenue workflow:
+
+* **Per-path pricing** — charge more for premium sections, less for the rest.
+* **Per-crawler rail routing** — send different AI crawlers to different settlement rails.
+* **Revenue dashboard** — totals, trends, and your top crawlers and paths.
+* **Bot-request logs** — every decision, filterable, with CSV/JSON export.
+* **Email alerts** — daily and weekly summaries plus spike detection.
+* **Content provenance** — SHA-256 fingerprints of exactly what each crawler received.
+* **Automatic log retention** — cleanup on a window you choose.
+
+The free detection and 402 enforcement stay fully functional on their own. Learn more at [crawlertoll.com](https://crawlertoll.com).
+
+= External services =
+
+The plugin's **free** detection and enforcement is self-contained — it makes no external HTTP requests during normal operation; everything runs locally on your server.
+
+CrawlerToll **Pro** features rely on these third-party services. None of them ever receive your content or your visitors' data.
+
+* **Freemius** — license validation, checkout, and Pro updates. When you activate a Pro license the plugin contacts Freemius (the licensing provider and merchant of record). After you opt in (optional and skippable), Freemius may also collect anonymous environment data such as your WordPress and PHP versions to improve the product. Terms: https://freemius.com/terms/ · Privacy: https://freemius.com/privacy/
+* **data.crawlertoll.com** — the optional auto-updating bot catalogue. When enabled, the plugin periodically fetches the latest AI-crawler list (`bots.json`) via a plain HTTP GET. No site or visitor data is sent. Privacy: https://crawlertoll.com/privacy
 
 = Why CrawlerToll exists =
 
@@ -59,6 +82,10 @@ The plugin starts enforcing immediately. Test with:
 You should see a `402 Payment Required` response with the `Crawler-Price` header.
 
 == Frequently Asked Questions ==
+
+= Is there a Pro version? =
+
+Yes. CrawlerToll Pro adds per-path pricing, per-crawler rail routing, a revenue dashboard, filterable bot-request logs with CSV/JSON export, email alerts, content provenance, and automatic log retention. The free plugin's detection and 402 enforcement remain fully functional without it. See [crawlertoll.com](https://crawlertoll.com).
 
 = Will this block Google or Bing from crawling my site? =
 

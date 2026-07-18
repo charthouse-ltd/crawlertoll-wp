@@ -1,0 +1,11 @@
+{
+    "plaintext_utf8": "{\"vehicle\":\"BMW 320i\",\"isv_eur\":6769.83}",
+    "cek": "l1t9xB7LIhU3d5Ef74TxYeH/tjyeN8HfwoOfu0yykns=",
+    "blob": {
+        "magic": "ct_sealed_v1",
+        "content_id": "ct_php_seal_parity",
+        "alg": "A256GCM",
+        "nonce": "9iz0X9MQYuPHKTWL",
+        "ciphertext": "tLruwt3Pw8aGRKNPuyt+WXhm5mSpI6SdmMXZ6zSEiwJdZu5NHwxMUTdCG04LGuut7DWvNKR6aCY="
+    }
+}

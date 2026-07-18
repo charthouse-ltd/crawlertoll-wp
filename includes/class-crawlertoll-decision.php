@@ -16,6 +16,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+require_once CRAWLERTOLL_PLUGIN_DIR . 'includes/class-crawlertoll-safemode.php';
+
 class CrawlerToll_Decision {
 
 	/**
@@ -34,6 +36,30 @@ class CrawlerToll_Decision {
 		$reasons = array();
 		$user_agent = isset( $request['user_agent'] ) ? (string) $request['user_agent'] : '';
 		$path = isset( $request['path'] ) ? (string) $request['path'] : '/';
+
+		// Safe Mode: search-engine and social-preview crawlers are never
+		// blocked or charged. They index your site; blocking them kills SEO.
+		if ( CrawlerToll_SafeMode::is_safe( $user_agent ) ) {
+			$reasons[] = 'safe-mode';
+			return array(
+				'action'  => 'allow',
+				'bot'     => null,
+				'group'   => null,
+				'reasons' => $reasons,
+			);
+		}
+
+		// SEO harmony: pages marked noindex by Yoast/Rank Math/AIOSEO/SEOPress
+		// should never trigger a 402. The publisher already said "don't index."
+		if ( CrawlerToll_SafeMode::is_noindex() ) {
+			$reasons[] = 'seo-noindex';
+			return array(
+				'action'  => 'allow',
+				'bot'     => null,
+				'group'   => null,
+				'reasons' => $reasons,
+			);
+		}
 
 		$bot_entry = CrawlerToll_Bot_Catalogue::match( $user_agent );
 		if ( $bot_entry === null ) {

@@ -108,11 +108,15 @@
 								break;
 							}
 						}
+						currentUAs = [val.toLowerCase()];
+						currentDisallow = [];
+						currentAllow = [];
+						currentCompensation = null;
+					} else {
+						// Consecutive User-agent lines share one rule group (robots.txt /
+						// RSL grouping) — accumulate them instead of resetting per line.
+						currentUAs.push( val.toLowerCase() );
 					}
-					currentUAs = [val.toLowerCase()];
-					currentDisallow = [];
-					currentAllow = [];
-					currentCompensation = null;
 				} else if (key === 'disallow' && val) {
 					currentDisallow.push(val);
 				} else if (key === 'allow' && val) {
@@ -122,7 +126,7 @@
 				}
 			}
 			// Last group
-			if (currentUAs.length > 0) {
+			if (currentUAs.length > 0 && ! matchedGroup) {
 				for (var k2 = 0; k2 < currentUAs.length; k2++) {
 					if (currentUAs[k2] === '*' || ua.toLowerCase().indexOf(currentUAs[k2]) !== -1) {
 						matchedGroup = { disallow: currentDisallow.slice(), allow: currentAllow.slice(), compensation: currentCompensation };

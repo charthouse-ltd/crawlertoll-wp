@@ -1,0 +1,106 @@
+/* Tailwind v4 WITHOUT Preflight. The default `@import "tailwindcss"` pulls in
+   Preflight — a GLOBAL CSS reset — which would clobber wp-admin's own styles
+   (headings, buttons, .form-table, etc.) the moment this bundle loads on the
+   settings page. We import only the theme + utilities layers, giving the React
+   UI Tailwind's utilities with no global reset. (WS2 adds the components layer +
+   a scoped root for shadcn.) */
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+
+:root {
+  --ct-bg: #ffffff;
+  --ct-surface: #f6f7f9;
+  --ct-elevated: #ffffff;
+  --ct-text: #18181b;
+  --ct-muted: #6b7280;
+  --ct-border: #e5e7eb;
+  --ct-accent: #2a78d6;
+  --ct-accent-2: #7c5cff;
+  --ct-success: #15a36e;
+  --ct-danger: #dc2626;
+  --ct-radius: 14px;
+  --ct-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 8px 24px -12px rgba(16, 24, 40, 0.12);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ct-bg: #161616;
+    --ct-surface: #1f1f1f;
+    --ct-elevated: #232325;
+    --ct-text: #f4f4f5;
+    --ct-muted: #a1a1aa;
+    --ct-border: #2c2c2c;
+    --ct-accent: #4d9fff;
+    --ct-accent-2: #9d83ff;
+    --ct-success: #34d399;
+    --ct-danger: #f87171;
+    --ct-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 30px -14px rgba(0, 0, 0, 0.6);
+  }
+}
+
+.ct-root {
+  color: var(--ct-text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+/* ── Pro app design-system root ─────────────────────────────────────────────
+   Everything is scoped under .ct-pro so wp-admin is never touched. The reset is
+   scoped too (no global Preflight): it normalises box-sizing + strips default
+   margins inside the app only. */
+.ct-pro {
+  color: var(--ct-text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+.ct-pro *,
+.ct-pro *::before,
+.ct-pro *::after {
+  box-sizing: border-box;
+}
+.ct-pro :where(h1, h2, h3, h4, p, figure, ul, ol, dl, dd) {
+  margin: 0;
+}
+.ct-pro :where(table) {
+  border-collapse: collapse;
+}
+.ct-pro :where(button) {
+  font: inherit;
+  cursor: pointer;
+}
+
+.ct-pro-card {
+  background: var(--ct-elevated);
+  border: 1px solid var(--ct-border);
+  border-radius: var(--ct-radius);
+  box-shadow: var(--ct-shadow);
+}
+
+/* Skeleton shimmer for loading states. */
+@keyframes ct-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+.ct-skeleton {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--ct-border) 55%, transparent) 25%,
+    color-mix(in srgb, var(--ct-border) 18%, transparent) 37%,
+    color-mix(in srgb, var(--ct-border) 55%, transparent) 63%
+  );
+  background-size: 200% 100%;
+  animation: ct-shimmer 1.4s ease-in-out infinite;
+  border-radius: 8px;
+}
+
+/* Bar grow-in for the crawler chart. */
+@keyframes ct-grow {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+.ct-bar-fill {
+  transform-origin: left center;
+  animation: ct-grow 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+}

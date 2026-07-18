@@ -1,0 +1,12 @@
+{
+  "src/pro/main.tsx": {
+    "file": "pro-app.C8IACqni.js",
+    "name": "main",
+    "src": "src/pro/main.tsx",
+    "isEntry": true
+  },
+  "style.css": {
+    "file": "pro-app.DI9k5CzF.css",
+    "src": "style.css"
+  }
+}

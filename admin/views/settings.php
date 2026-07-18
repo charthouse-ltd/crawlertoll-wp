@@ -22,48 +22,43 @@ $price_dollars = number_format( (int) $settings['price_micros'] / 1000000, 4 );
 $site_url = home_url();
 ?>
 
-<div class="ct-header">
-	<h1>
-		<?php esc_html_e( 'CrawlerToll', 'crawlertoll' ); ?>
-		<span class="ct-badge">v<?php echo esc_html( CRAWLERTOLL_VERSION ); ?></span>
-	</h1>
-	<p>
-		<?php esc_html_e( 'AI-crawler enforcement for WordPress. Detects 30+ AI crawlers, applies your RSL 1.0 policy, and issues HTTP 402 with a structured payment offer. Vendor-neutral — works with TollBit, Skyfire, x402, Cloudflare Pay Per Crawl, and Stripe ACP.', 'crawlertoll' ); ?>
-	</p>
-</div>
-
 <form method="post" action="options.php">
 	<?php settings_fields( 'crawlertoll' ); ?>
 
-	<!-- Status cards -->
-	<div class="ct-status-bar">
-		<div class="ct-stat-card">
-			<div class="ct-stat-icon <?php echo $is_enabled ? 'green' : 'amber'; ?>">
-				<span class="dashicons <?php echo $is_enabled ? 'dashicons-shield' : 'dashicons-shield-alt'; ?>"></span>
+	<!-- Status cards. React (free-app) mounts into #crawlertoll-free-app and
+	     replaces the server-rendered cards below with the live version. If the
+	     bundle is absent (un-built tree, or the wp.org build before assets
+	     ship), these cards remain as the graceful fallback. -->
+	<div id="crawlertoll-free-app">
+		<div class="ct-status-bar">
+			<div class="ct-stat-card">
+				<div class="ct-stat-icon <?php echo $is_enabled ? 'green' : 'amber'; ?>">
+					<span class="dashicons <?php echo $is_enabled ? 'dashicons-shield' : 'dashicons-shield-alt'; ?>"></span>
+				</div>
+				<div class="ct-stat-value"><?php echo $is_enabled ? esc_html__( 'Active', 'crawlertoll' ) : esc_html__( 'Paused', 'crawlertoll' ); ?></div>
+				<div class="ct-stat-label"><?php esc_html_e( 'Enforcement', 'crawlertoll' ); ?></div>
 			</div>
-			<div class="ct-stat-value"><?php echo $is_enabled ? esc_html__( 'Active', 'crawlertoll' ) : esc_html__( 'Paused', 'crawlertoll' ); ?></div>
-			<div class="ct-stat-label"><?php esc_html_e( 'Enforcement', 'crawlertoll' ); ?></div>
-		</div>
-		<div class="ct-stat-card">
-			<div class="ct-stat-icon purple">
-				<span class="dashicons dashicons-networking"></span>
+			<div class="ct-stat-card">
+				<div class="ct-stat-icon purple">
+					<span class="dashicons dashicons-networking"></span>
+				</div>
+				<div class="ct-stat-value"><?php echo count( $bots ); ?></div>
+				<div class="ct-stat-label"><?php esc_html_e( 'AI Crawlers Detected', 'crawlertoll' ); ?></div>
 			</div>
-			<div class="ct-stat-value"><?php echo count( $bots ); ?></div>
-			<div class="ct-stat-label"><?php esc_html_e( 'AI Crawlers Detected', 'crawlertoll' ); ?></div>
-		</div>
-		<div class="ct-stat-card">
-			<div class="ct-stat-icon blue">
-				<span class="dashicons dashicons-admin-generic"></span>
+			<div class="ct-stat-card">
+				<div class="ct-stat-icon blue">
+					<span class="dashicons dashicons-admin-generic"></span>
+				</div>
+				<div class="ct-stat-value"><?php echo esc_html( $active_groups ); ?></div>
+				<div class="ct-stat-label"><?php esc_html_e( 'Policy Groups', 'crawlertoll' ); ?></div>
 			</div>
-			<div class="ct-stat-value"><?php echo esc_html( $active_groups ); ?></div>
-			<div class="ct-stat-label"><?php esc_html_e( 'Policy Groups', 'crawlertoll' ); ?></div>
-		</div>
-		<div class="ct-stat-card">
-			<div class="ct-stat-icon <?php echo (int) $settings['price_micros'] > 0 ? 'green' : 'amber'; ?>">
-				<span class="dashicons dashicons-money"></span>
+			<div class="ct-stat-card">
+				<div class="ct-stat-icon <?php echo (int) $settings['price_micros'] > 0 ? 'green' : 'amber'; ?>">
+					<span class="dashicons dashicons-money"></span>
+				</div>
+				<div class="ct-stat-value">$<?php echo esc_html( $price_dollars ); ?></div>
+				<div class="ct-stat-label"><?php esc_html_e( 'Per Crawl', 'crawlertoll' ); ?></div>
 			</div>
-			<div class="ct-stat-value">$<?php echo esc_html( $price_dollars ); ?></div>
-			<div class="ct-stat-label"><?php esc_html_e( 'Per Crawl', 'crawlertoll' ); ?></div>
 		</div>
 	</div>
 
@@ -308,6 +303,29 @@ $site_url = home_url();
 			<code><?php echo esc_url( $site_url . '/.well-known/context-license.json' ); ?></code>
 			<span class="ct-endpoint-status active"><?php esc_html_e( 'ACTIVE', 'crawlertoll' ); ?></span>
 			<span style="font-size:12px;color:var(--ct-text-muted);"><?php esc_html_e( 'Built from your settings + site info. CC0 schema.', 'crawlertoll' ); ?></span>
+		</div>
+	</div>
+
+	<!-- Advanced -->
+	<div class="ct-card">
+		<h2>
+			<span class="dashicons dashicons-admin-tools"></span>
+			<?php esc_html_e( 'Advanced', 'crawlertoll' ); ?>
+		</h2>
+		<p class="ct-card-desc"><?php esc_html_e( 'By default, deleting the plugin keeps your settings and request logs so you can reinstall without losing data.', 'crawlertoll' ); ?></p>
+		<div class="ct-toggle-row">
+			<label class="ct-toggle">
+				<input
+					type="checkbox"
+					name="<?php echo esc_attr( CRAWLERTOLL_OPTION_KEY ); ?>[remove_data_on_uninstall]"
+					value="1"
+					<?php checked( ! empty( $settings['remove_data_on_uninstall'] ) ); ?>
+				/>
+				<span class="ct-toggle-slider"></span>
+			</label>
+			<span class="ct-toggle-label">
+				<?php esc_html_e( 'Remove all CrawlerToll data when the plugin is deleted (drops the log table, settings, and scheduled tasks). Cannot be undone.', 'crawlertoll' ); ?>
+			</span>
 		</div>
 	</div>
 
