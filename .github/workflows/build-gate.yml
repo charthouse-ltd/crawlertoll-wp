@@ -1,0 +1,14 @@
+name: build-gate
+on: [push, pull_request]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # build.sh enforces the two release invariants: the FREE artifact must degrade
+      # without Freemius, and neither artifact may contain secret markers. A violation
+      # fails the build — that gate is the CI value.
+      - name: Build free + pro artifacts
+        run: bash build.sh
+      - name: Both zips exist
+        run: test -f build/crawlertoll.zip && test -f build/crawlertoll-pro.zip
