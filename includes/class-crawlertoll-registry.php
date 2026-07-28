@@ -49,6 +49,18 @@ class CrawlerToll_Registry {
 	}
 
 	/**
+	 * Registry base URL. Honors the CRAWLERTOLL_REGISTRY_URL constant override
+	 * (local dev / staging) everywhere — F1 (live QA 2026-07-28): several methods
+	 * used the hardcoded production constant, so a staging override silently
+	 * enrolled/pushed to the wrong registry.
+	 *
+	 * @return string
+	 */
+	private static function base_url() {
+		return defined( 'CRAWLERTOLL_REGISTRY_URL' ) ? CRAWLERTOLL_REGISTRY_URL : self::REGISTRY_URL;
+	}
+
+	/**
 	 * Whether the site is registered with the registry.
 	 *
 	 * @return bool
@@ -75,7 +87,7 @@ class CrawlerToll_Registry {
 		);
 
 		$response = wp_remote_post(
-			self::REGISTRY_URL . '/v1/register',
+			self::base_url() . '/v1/register',
 			array(
 				'body'    => wp_json_encode( $body ),
 				'headers' => array(
@@ -116,9 +128,40 @@ class CrawlerToll_Registry {
 	 * @return array|WP_Error Decoded JSON, or WP_Error on transport failure.
 	 */
 	public function register_sealed( $content_id, $cek_b64, $price_micros, $currency = 'USDC', $scope = 'full' ) {
-		$base     = defined( 'CRAWLERTOLL_REGISTRY_URL' ) ? CRAWLERTOLL_REGISTRY_URL : self::REGISTRY_URL;
-		$response = wp_remote_post(
-			$base . '/v1/sealed/register',
+		$response = $this->post_sealed_register( $content_id, $cek_b64, $price_micros, $currency, $scope );
+		if ( is_wp_error( $response ) ) {
+			return $response;
+		}
+		$data = json_decode( wp_remote_retrieve_body( $response ), true );
+
+		// F1 (live QA 2026-07-28): an unenrolled site got a 401 here and the seal
+		// silently degraded to a plain 402 — nothing for the bot to buy, funnel
+		// dead at install. Self-heal instead: enroll once (TOFU binds our bearer
+		// key to this domain, gated on the well-known ownership proof), then
+		// retry the escrow write once. A genuine auth failure (someone else's
+		// token owns the domain) still fails — exactly once, no loop.
+		if ( is_array( $data ) && isset( $data['error'] )
+			&& in_array( $data['error'], array( 'publisher_not_enrolled', 'invalid_token', 'missing_bearer_token' ), true ) ) {
+			$enroll = $this->register_with_registry();
+			if ( ! is_wp_error( $enroll ) && is_array( $enroll ) && isset( $enroll['status'] ) && 'registered' === $enroll['status'] ) {
+				$response = $this->post_sealed_register( $content_id, $cek_b64, $price_micros, $currency, $scope );
+				if ( is_wp_error( $response ) ) {
+					return $response;
+				}
+				$data = json_decode( wp_remote_retrieve_body( $response ), true );
+			}
+		}
+		return $data;
+	}
+
+	/**
+	 * Raw POST /v1/sealed/register (single attempt).
+	 *
+	 * @return array|WP_Error Raw HTTP response, or WP_Error on transport failure.
+	 */
+	private function post_sealed_register( $content_id, $cek_b64, $price_micros, $currency, $scope ) {
+		return wp_remote_post(
+			self::base_url() . '/v1/sealed/register',
 			array(
 				'body'    => wp_json_encode(
 					array(
@@ -137,10 +180,6 @@ class CrawlerToll_Registry {
 				'timeout' => 15,
 			)
 		);
-		if ( is_wp_error( $response ) ) {
-			return $response;
-		}
-		return json_decode( wp_remote_retrieve_body( $response ), true );
 	}
 
 	/**
@@ -152,7 +191,7 @@ class CrawlerToll_Registry {
 		$domain = wp_parse_url( home_url(), PHP_URL_HOST );
 
 		$response = wp_remote_request(
-			self::REGISTRY_URL . '/v1/publisher/' . urlencode( $domain ),
+			self::base_url() . '/v1/publisher/' . urlencode( $domain ),
 			array(
 				'method'  => 'DELETE',
 				'headers' => array(
@@ -248,7 +287,7 @@ class CrawlerToll_Registry {
 			);
 
 			wp_remote_post(
-				self::REGISTRY_URL . '/v1/hashes',
+				self::base_url() . '/v1/hashes',
 				array(
 					'body'    => wp_json_encode( $body ),
 					'headers' => array(

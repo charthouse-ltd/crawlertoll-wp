@@ -298,7 +298,12 @@ register_activation_hook(
 			$db = new CrawlerToll_DB( $GLOBALS['wpdb'] );
 			$db->maybe_create_table();
 		}
-		flush_rewrite_rules();
+		// F4 (live QA 2026-07-28): flush_rewrite_rules() here regenerates the ruleset
+		// BEFORE this plugin's init hooks have re-registered its rewrites, so the
+		// .well-known/context-license.json route (registry enrollment depends on it)
+		// 404s until a manual re-flush. Deleting the option forces regeneration on
+		// the next request — with the plugin fully loaded.
+		delete_option( 'rewrite_rules' );
 	}
 );
 
@@ -312,6 +317,9 @@ register_deactivation_hook(
 			CrawlerToll_CatalogueUpdater::clear_cron();
 		}
 		wp_clear_scheduled_hook( 'crawlertoll_purge_logs' );
-		flush_rewrite_rules();
+		// Same F4 fix: flush_rewrite_rules() during deactivation can KEEP the
+		// just-deactivated plugin's rules (its init hooks already fired for this
+		// request). Deleting forces a clean regenerate without them.
+		delete_option( 'rewrite_rules' );
 	}
 );
