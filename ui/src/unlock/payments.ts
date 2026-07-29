@@ -64,6 +64,52 @@ export async function startStripe(contentId: string, passId: string, mountNode: 
   };
 }
 
+// Chain metadata for wallet_addEthereumChain when the wallet doesn't know the
+// network yet (error 4902). Keyed by numeric chainId from the offer's EIP-712 domain.
+const CHAIN_PARAMS: Record<number, { chainId: string; chainName: string; rpcUrls: string[]; nativeCurrency: { name: string; symbol: string; decimals: number }; blockExplorerUrls: string[] }> = {
+  8453: {
+    chainId: "0x2105", chainName: "Base", rpcUrls: ["https://mainnet.base.org"],
+    nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 }, blockExplorerUrls: ["https://basescan.org"],
+  },
+  84532: {
+    chainId: "0x14a34", chainName: "Base Sepolia", rpcUrls: ["https://sepolia.base.org"],
+    nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 }, blockExplorerUrls: ["https://sepolia.basescan.org"],
+  },
+};
+
+/**
+ * The EIP-3009 signature is only valid on the chain the offer's domain names —
+ * signing on the wrong chain produces an unverifiable authorization (or worse,
+ * looks valid while settling nowhere). Switch (or add) the wallet's chain first.
+ */
+async function ensureChain(domain: { chainId: number }): Promise<void> {
+  if (!window.ethereum) {
+    throw new UnlockError("No web3 wallet detected.", "x402_unavailable");
+  }
+  const targetHex = `0x${domain.chainId.toString(16)}`;
+  const current = (await window.ethereum.request({ method: "eth_chainId" })) as string | undefined;
+  if (current && current.toLowerCase() === targetHex.toLowerCase()) {
+    return;
+  }
+  try {
+    await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: targetHex }] });
+  } catch (e) {
+    const code = (e as { code?: number })?.code;
+    if (code === 4902) {
+      const params = CHAIN_PARAMS[domain.chainId];
+      if (!params) {
+        throw new UnlockError("This payment network isn't supported by the unlock yet.", "x402_chain_unknown");
+      }
+      await window.ethereum.request({ method: "wallet_addEthereumChain", params: [params] });
+      return;
+    }
+    if (code === 4001) {
+      throw new UnlockError("Network switch was rejected in the wallet.", "x402_chain_rejected");
+    }
+    throw new UnlockError("Could not switch the wallet network.", "x402_chain");
+  }
+}
+
 /**
  * x402: sign an EIP-3009 transferWithAuthorization with the reader's wallet and
  * redeem with an X-PAYMENT header. Requires the offer to carry the token domain
@@ -74,9 +120,7 @@ export async function payX402(contentId: string, offer: SignedOffer): Promise<st
   if (!x || !x.payTo || !window.ethereum) {
     throw new UnlockError("USDC unlock is unavailable.", "x402_unavailable");
   }
-  const domain = (x as Record<string, unknown>).eip712 as
-    | { name: string; version: string; chainId: number; verifyingContract: string }
-    | undefined;
+  const domain = x.eip712;
   if (!domain) {
     // The signed offer must include the token's EIP-712 domain for the wallet to
     // sign a verifiable authorization. Until buildOffer enriches it, x402-browser
@@ -84,8 +128,14 @@ export async function payX402(contentId: string, offer: SignedOffer): Promise<st
     throw new UnlockError("USDC unlock isn't fully configured yet.", "x402_no_domain");
   }
 
-  const from = (await window.ethereum.request({ method: "eth_requestAccounts" })) as string[];
+  let from: string[];
+  try {
+    from = (await window.ethereum.request({ method: "eth_requestAccounts" })) as string[];
+  } catch {
+    throw new UnlockError("Wallet connection was rejected.", "x402_connect_rejected");
+  }
   const account = from[0];
+  await ensureChain(domain);
   const now = Math.floor(Date.now() / 1000);
   const authorization = {
     from: account,

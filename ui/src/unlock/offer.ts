@@ -18,6 +18,10 @@ export interface X402Offer {
   network?: string | null;
   priceMicros?: number;
   currency?: string;
+  testnet?: boolean;
+  // Token's EIP-712 domain (inside the signed offer) — required for the wallet to
+  // produce a verifiable EIP-3009 signature. Absent ⇒ rail shows as unconfigured.
+  eip712?: { name: string; version: string; chainId: number; verifyingContract: string } | null;
 }
 
 export interface SignedOffer {
@@ -83,10 +87,12 @@ export function offerToRails(offer: SignedOffer, env: UnlockEnv): RailTile[] {
   }
 
   if (offer.x402 && offer.x402.payTo) {
+    // Label honestly: a testnet charge is not real money and must never look like it.
+    const isTestnet = offer.x402.testnet === true || /sepolia|devnet/i.test(offer.x402.network || "");
     tiles.push({
       rail: "x402",
       key: "x402",
-      label: "Pay with USDC (x402)",
+      label: isTestnet ? "Pay with USDC (testnet)" : "Pay with USDC (x402)",
       enabled: env.hasWallet,
       reason: env.hasWallet ? undefined : "No web3 wallet detected.",
       priceLabel: fmtMicros(offer.x402.priceMicros, offer.x402.currency),
