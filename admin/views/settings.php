@@ -147,6 +147,24 @@ $site_url = home_url();
 			</tr>
 			<tr>
 				<th scope="row">
+					<label for="crawlertoll-x402-pay-to"><?php esc_html_e( 'USDC payout address', 'crawlertoll' ); ?></label>
+				</th>
+				<td>
+					<input
+						id="crawlertoll-x402-pay-to"
+						type="text"
+						class="regular-text"
+						placeholder="0x…"
+						name="<?php echo esc_attr( CRAWLERTOLL_OPTION_KEY ); ?>[x402_pay_to]"
+						value="<?php echo esc_attr( isset( $settings['x402_pay_to'] ) ? (string) $settings['x402_pay_to'] : '' ); ?>"
+					/>
+					<p class="description">
+						<?php esc_html_e( 'Your wallet address on Base. USDC from readers and AI agents is paid directly to this address — CrawlerToll never touches the money. Leave empty to disable the USDC rail.', 'crawlertoll' ); ?>
+					</p>
+				</td>
+			</tr>
+			<tr>
+				<th scope="row">
 					<label for="crawlertoll-payment-url"><?php esc_html_e( 'Payment URL', 'crawlertoll' ); ?></label>
 				</th>
 				<td>

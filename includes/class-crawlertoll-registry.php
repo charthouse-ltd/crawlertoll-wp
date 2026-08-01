@@ -160,19 +160,25 @@ class CrawlerToll_Registry {
 	 * @return array|WP_Error Raw HTTP response, or WP_Error on transport failure.
 	 */
 	private function post_sealed_register( $content_id, $cek_b64, $price_micros, $currency, $scope ) {
+		$settings = wp_parse_args( (array) get_option( CRAWLERTOLL_OPTION_KEY ), crawlertoll_default_settings() );
+		$body     = array(
+			'content_id'   => $content_id,
+			'cek'          => $cek_b64,
+			'price_micros' => (int) $price_micros,
+			'currency'     => $currency,
+			'scope'        => $scope,
+			'publisher'    => wp_parse_url( home_url(), PHP_URL_HOST ),
+		);
+		// R1.x-a: the publisher's USDC payout address. Without it the registry
+		// advertises x402 with no payee and (in production) fails closed — paid
+		// content must always declare where the money goes.
+		if ( ! empty( $settings['x402_pay_to'] ) && preg_match( '/^0x[0-9a-fA-F]{40}$/', (string) $settings['x402_pay_to'] ) ) {
+			$body['x402_pay_to'] = (string) $settings['x402_pay_to'];
+		}
 		return wp_remote_post(
 			self::base_url() . '/v1/sealed/register',
 			array(
-				'body'    => wp_json_encode(
-					array(
-						'content_id'   => $content_id,
-						'cek'          => $cek_b64,
-						'price_micros' => (int) $price_micros,
-						'currency'     => $currency,
-						'scope'        => $scope,
-						'publisher'    => wp_parse_url( home_url(), PHP_URL_HOST ),
-					)
-				),
+				'body'    => wp_json_encode( $body ),
 				'headers' => array(
 					'Content-Type'  => 'application/json',
 					'Authorization' => 'Bearer ' . $this->get_registry_key(),

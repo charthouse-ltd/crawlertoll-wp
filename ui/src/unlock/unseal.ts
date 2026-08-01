@@ -18,6 +18,18 @@ export interface SealedBlob {
   ciphertext: string; // base64, ct||tag (16-byte tag appended)
 }
 
+// Thrown when the page runs in a non-secure context (plain HTTP, some iframes):
+// browsers gate WebCrypto behind window.isSecureContext, so crypto.subtle is
+// undefined and NO decryption can ever succeed. Callers must show a distinct
+// "needs HTTPS" message — never the generic "could not be decrypted", which
+// wrongly suggests a bad key or tampered content after a real payment settled.
+export class InsecureContextError extends Error {
+  constructor() {
+    super("crypto.subtle unavailable (insecure context)");
+    this.name = "InsecureContextError";
+  }
+}
+
 function unb64(s: string): Uint8Array<ArrayBuffer> {
   const bin = atob(s);
   const buf = new ArrayBuffer(bin.length);
@@ -31,6 +43,9 @@ function unb64(s: string): Uint8Array<ArrayBuffer> {
 export async function unseal(blob: SealedBlob, cekB64: string): Promise<string> {
   if (!blob || blob.magic !== "ct_sealed_v1") {
     throw new Error("not a ct_sealed_v1 blob");
+  }
+  if (typeof crypto === "undefined" || typeof crypto.subtle === "undefined") {
+    throw new InsecureContextError();
   }
   const key = await crypto.subtle.importKey(
     "raw",

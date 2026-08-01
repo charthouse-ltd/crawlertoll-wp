@@ -127,6 +127,17 @@ class CrawlerToll_Admin {
 		$out['rail']                = isset( $input['rail'] ) && in_array( $input['rail'], array_keys( crawlertoll_rail_options() ), true )
 			? $input['rail']
 			: $defaults['rail'];
+		// R1.x-a: publisher's USDC payout address (EVM, Base). Strict shape check —
+		// an invalid value must never reach the registry (it would aim payments at
+		// a malformed destination). Invalid input keeps the stored value + warns.
+		if ( isset( $input['x402_pay_to'] ) ) {
+			$candidate = trim( (string) $input['x402_pay_to'] );
+			if ( '' === $candidate || preg_match( '/^0x[0-9a-fA-F]{40}$/', $candidate ) ) {
+				$out['x402_pay_to'] = $candidate;
+			} else {
+				add_settings_error( CRAWLERTOLL_OPTION_KEY, 'x402_pay_to_invalid', esc_html__( 'USDC payout address ignored: it must be a 0x… address (42 characters).', 'crawlertoll' ) );
+			}
+		}
 		$out['payment_url']         = isset( $input['payment_url'] ) ? esc_url_raw( trim( $input['payment_url'] ) ) : '';
 		$out['terms_url']           = isset( $input['terms_url'] ) ? esc_url_raw( trim( $input['terms_url'] ) ) : '';
 		$out['context_license_url'] = isset( $input['context_license_url'] ) ? esc_url_raw( trim( $input['context_license_url'] ) ) : '';

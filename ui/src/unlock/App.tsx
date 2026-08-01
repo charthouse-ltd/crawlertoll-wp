@@ -3,7 +3,7 @@ import { fetchOffer, hasStripeKey, hasWallet, UnlockError } from "./api";
 import { offerToRails, type RailTile, type SignedOffer } from "./offer";
 import { payX402, startStripe } from "./payments";
 import { sanitizeBody } from "./sanitize";
-import { unseal, type SealedBlob } from "./unseal";
+import { unseal, InsecureContextError, type SealedBlob } from "./unseal";
 
 type State = "idle" | "loading" | "menu" | "stripe" | "processing" | "unlocked" | "error" | "unavailable";
 
@@ -40,8 +40,12 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
     try {
       setBodyHtml(sanitizeBody(await unseal(blob, cek)));
       setState("unlocked");
-    } catch {
-      setError("Unlock failed — the content could not be decrypted.");
+    } catch (e) {
+      setError(
+        e instanceof InsecureContextError
+          ? "This page needs a secure (https) connection to decrypt the content. Reload the page with https:// and unlock again."
+          : "Unlock failed — the content could not be decrypted.",
+      );
       setState("error");
     }
   };

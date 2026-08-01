@@ -209,6 +209,7 @@ function crawlertoll_default_settings() {
 		'price_micros'         => 5000,
 		'currency'             => 'USD',
 		'rail'                 => 'x402',
+		'x402_pay_to'          => '',
 		'payment_url'          => '',
 		'terms_url'            => '',
 		'context_license_url'  => '',
