@@ -113,7 +113,9 @@ export function redeemStripe(contentId: string, passId: string, intentId: string
   return postKey(contentId, { rail: "stripe", pass_id: passId, intent_id: intentId });
 }
 
-/** x402: redeem with a base64 X-PAYMENT header built from a wallet signature. */
-export function redeemX402(contentId: string, xPayment: string): Promise<KeyResponse> {
-  return postKey(contentId, {}, { "X-PAYMENT": xPayment });
+/** x402: redeem with the payment header built from a wallet signature.
+ *  V2 sends PAYMENT-SIGNATURE, legacy V1 sends X-PAYMENT — the registry
+ *  accepts both, keyed on the payload's x402Version. */
+export function redeemX402(contentId: string, xPayment: string, version: 1 | 2 = 1): Promise<KeyResponse> {
+  return postKey(contentId, {}, { [version === 2 ? "PAYMENT-SIGNATURE" : "X-PAYMENT"]: xPayment });
 }

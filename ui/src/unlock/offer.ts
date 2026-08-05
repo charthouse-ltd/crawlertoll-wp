@@ -16,6 +16,10 @@ export interface X402Offer {
   payTo?: string | null;
   asset?: string | null;
   network?: string | null;
+  // CAIP-2 network id (e.g. "eip155:84532") inside the signed offer. Present ⇒
+  // the registry speaks x402 V2 (PAYMENT-SIGNATURE header, `accepted` echo);
+  // absent ⇒ legacy V1 (X-PAYMENT header).
+  networkCaip2?: string | null;
   priceMicros?: number;
   currency?: string;
   testnet?: boolean;

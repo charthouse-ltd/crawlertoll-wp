@@ -182,14 +182,36 @@ export async function payX402(contentId: string, offer: SignedOffer): Promise<st
     throw new UnlockError("Could not sign the payment authorization.", "x402_sign");
   }
 
+  // V2 (offer carries a CAIP-2 network): echo the accepted requirements
+  // verbatim per spec and send as PAYMENT-SIGNATURE. Legacy V1: bare
+  // X-PAYMENT payload. The registry accepts both, keyed on x402Version.
+  const version: 1 | 2 = x.networkCaip2 ? 2 : 1;
   const xPayment = btoa(
-    JSON.stringify({
-      x402Version: 1,
-      scheme: "exact",
-      network: x.network,
-      payload: { signature, authorization },
-    }),
+    JSON.stringify(
+      version === 2
+        ? {
+            x402Version: 2,
+            scheme: "exact",
+            network: x.networkCaip2,
+            accepted: {
+              scheme: "exact",
+              network: x.networkCaip2,
+              amount: String(x.priceMicros ?? 0),
+              asset: x.asset,
+              payTo: x.payTo,
+              maxTimeoutSeconds: 300,
+            },
+            payload: { signature, authorization },
+            extensions: {},
+          }
+        : {
+            x402Version: 1,
+            scheme: "exact",
+            network: x.network,
+            payload: { signature, authorization },
+          },
+    ),
   );
-  const { cek } = await redeemX402(contentId, xPayment);
+  const { cek } = await redeemX402(contentId, xPayment, version);
   return cek;
 }
