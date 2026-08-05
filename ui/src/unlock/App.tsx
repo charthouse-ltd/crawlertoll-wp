@@ -7,6 +7,36 @@ import { unseal, InsecureContextError, type SealedBlob } from "./unseal";
 
 type State = "idle" | "loading" | "menu" | "stripe" | "processing" | "unlocked" | "error" | "unavailable";
 
+// CEK persistence (R1 launch blocker, lineup freeze 2026-08-05 D8-2): a reader
+// who paid keeps access across reloads — and across LOCAL post-settlement
+// failures (plain-HTTP crypto.subtle, a crashed tab) without paying twice.
+// The cached CEK decrypts exactly one article on one origin; a script able to
+// read localStorage could equally read the already-decrypted DOM, so this does
+// not widen the XSS surface beyond what a successful unlock exposes. The CEK
+// is never transmitted anywhere by this code.
+const CEK_PREFIX = "ct:cek:";
+function cekGet(contentId: string): string | null {
+  try {
+    return window.localStorage?.getItem(CEK_PREFIX + contentId) ?? null;
+  } catch {
+    return null; // storage blocked (private mode) — pay flow still works
+  }
+}
+function cekSet(contentId: string, cek: string): void {
+  try {
+    window.localStorage?.setItem(CEK_PREFIX + contentId, cek);
+  } catch {
+    /* storage blocked — session-only unlock, acceptable degradation */
+  }
+}
+function cekClear(contentId: string): void {
+  try {
+    window.localStorage?.removeItem(CEK_PREFIX + contentId);
+  } catch {
+    /* ignore */
+  }
+}
+
 const card: CSSProperties = {
   border: "1px solid var(--ct-border)",
   background: "var(--ct-surface)",
@@ -33,22 +63,49 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
     setState("error");
   };
 
-  const reveal = async (cek: string) => {
+  const reveal = async (cek: string, fromCache = false) => {
     if (!blob) {
       return;
+    }
+    if (!fromCache) {
+      // Persist at RELEASE time, before decrypt: the registry only reaches this
+      // point after a verified settlement, so a local failure afterwards (plain
+      // HTTP, tab crash) must never force a second payment — the retry unlocks
+      // from this cache.
+      cekSet(contentId, cek);
     }
     try {
       setBodyHtml(sanitizeBody(await unseal(blob, cek)));
       setState("unlocked");
     } catch (e) {
+      if (fromCache) {
+        // Stale cache (publisher edited + re-sealed under the same content_id):
+        // drop it and send the reader back through the pay flow — never show a
+        // bogus "could not be decrypted" for a key that was once valid.
+        cekClear(contentId);
+        setState("idle");
+        return;
+      }
       setError(
         e instanceof InsecureContextError
-          ? "This page needs a secure (https) connection to decrypt the content. Reload the page with https:// and unlock again."
+          ? "This page needs a secure (https) connection to decrypt the content. Reload the page with https:// — your payment is saved on this device and you will not be charged again."
           : "Unlock failed — the content could not be decrypted.",
       );
       setState("error");
     }
   };
+
+  // Returning reader: a previously released CEK unlocks instantly, no payment.
+  useEffect(() => {
+    if (!ready) {
+      return;
+    }
+    const cached = cekGet(contentId);
+    if (cached) {
+      void reveal(cached, true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const loadMenu = async () => {
     setState("loading");
