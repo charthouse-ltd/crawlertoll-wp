@@ -43,9 +43,19 @@ export class UnlockError extends Error {
   }
 }
 
+// A failed fetch (registry down, offline, DNS) throws a bare TypeError — map it
+// to a human message instead of the generic "Something went wrong."
+async function safeFetch(url: string, init?: RequestInit): Promise<Response> {
+  try {
+    return await fetch(url, init);
+  } catch {
+    throw new UnlockError("Could not reach the payment server. Check your connection and try again.", "network");
+  }
+}
+
 /** Step A: POST with no proof → the signed 402 offer (authoritative rail set). */
 export async function fetchOffer(contentId: string): Promise<SignedOffer> {
-  const res = await fetch(keyUrl(contentId), {
+  const res = await safeFetch(keyUrl(contentId), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: "{}",
@@ -65,7 +75,7 @@ interface KeyResponse {
 }
 
 async function postKey(contentId: string, body: Record<string, unknown>, headers: Record<string, string> = {}): Promise<KeyResponse> {
-  const res = await fetch(keyUrl(contentId), {
+  const res = await safeFetch(keyUrl(contentId), {
     method: "POST",
     headers: { "Content-Type": "application/json", ...headers },
     body: JSON.stringify(body),
@@ -84,7 +94,7 @@ async function postKey(contentId: string, body: Record<string, unknown>, headers
 
 /** Stripe: create a PaymentIntent on the publisher's connected account. */
 export async function createStripeIntent(contentId: string, passId: string): Promise<{ client_secret: string; intent_id: string }> {
-  const res = await fetch(intentUrl(contentId), {
+  const res = await safeFetch(intentUrl(contentId), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ pass_id: passId }),

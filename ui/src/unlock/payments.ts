@@ -166,10 +166,21 @@ export async function payX402(contentId: string, offer: SignedOffer): Promise<st
     primaryType: "TransferWithAuthorization",
     message: authorization,
   };
-  const signature = (await window.ethereum.request({
-    method: "eth_signTypedData_v4",
-    params: [account, JSON.stringify(typedData)],
-  })) as string;
+  let signature: string;
+  try {
+    signature = (await window.ethereum.request({
+      method: "eth_signTypedData_v4",
+      params: [account, JSON.stringify(typedData)],
+    })) as string;
+  } catch (e) {
+    // Cancelling the MetaMask signature prompt is the single most common user
+    // path here — name it, never fall through to "Something went wrong."
+    const code = (e as { code?: number })?.code;
+    if (code === 4001) {
+      throw new UnlockError("Signature was rejected in the wallet — nothing was charged.", "x402_sign_rejected");
+    }
+    throw new UnlockError("Could not sign the payment authorization.", "x402_sign");
+  }
 
   const xPayment = btoa(
     JSON.stringify({
