@@ -8,7 +8,14 @@
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css" layer(utilities);
 
-:root {
+/* Design tokens are scoped to our app roots — NEVER :root. wp-admin's own
+   admin.css defines the same --ct-* names on :root; defining ours globally too
+   makes the LAST-loaded file win for BOTH apps, and the dark-mode media query
+   then turns wp-admin headings near-white on white cards (Chris QA 2026-08-12:
+   invisible settings text on a dark-mode OS). Scoped tokens keep both apps
+   correct regardless of load order or OS theme. */
+.ct-root,
+.ct-pro {
   --ct-bg: #ffffff;
   --ct-surface: #f6f7f9;
   --ct-elevated: #ffffff;
@@ -24,7 +31,8 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  .ct-root,
+  .ct-pro {
     --ct-bg: #161616;
     --ct-surface: #1f1f1f;
     --ct-elevated: #232325;
