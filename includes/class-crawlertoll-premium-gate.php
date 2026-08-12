@@ -219,6 +219,14 @@ class CrawlerToll_Premium_Gate {
 	public function filter_content( $content ) {
 		$id = (int) get_the_ID();
 		if ( ! $this->is_gated( $id ) ) {
+			// Editor viewing their own premium post on the frontend: the paywall
+			// is intentionally absent (is_gated() excludes editors) — SAY SO, or
+			// the publisher thinks the paywall is broken (Chris QA 2026-08-12:
+			// logged-in admin saw full content, kept hard-refreshing).
+			if ( $id > 0 && CrawlerToll_Cut::is_premium( $id ) && current_user_can( 'edit_post', $id )
+				&& is_singular() && is_main_query() && in_the_loop() && ! is_feed() ) {
+				return $this->editor_notice() . $content;
+			}
 			return $content;
 		}
 		$preview = $this->preview_html( $id );
@@ -226,6 +234,18 @@ class CrawlerToll_Premium_Gate {
 			$preview .= $this->locked_section( $id );
 		}
 		return $preview;
+	}
+
+	/**
+	 * Small frontend banner shown to editors on premium posts: explains that the
+	 * full text is the editor view and readers/agents get the paywall.
+	 *
+	 * @return string
+	 */
+	private function editor_notice() {
+		return '<div class="crawlertoll-editor-note" style="border:1px dashed #946b00;background:#fff8e1;color:#5c4800;padding:10px 14px;margin:0 0 16px;border-radius:8px;font-size:13px;">'
+			. '<strong>CrawlerToll:</strong> ' . esc_html__( 'This article is premium. You see the full text because you are logged in as an editor — readers and AI agents see the paywall. To test the reader flow, open this page logged out or in a private window.', 'crawlertoll' )
+			. '</div>';
 	}
 
 	/**
