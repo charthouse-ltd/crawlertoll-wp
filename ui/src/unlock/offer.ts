@@ -97,8 +97,11 @@ export function offerToRails(offer: SignedOffer, env: UnlockEnv): RailTile[] {
       rail: "x402",
       key: "x402",
       label: isTestnet ? "Pay with USDC (testnet)" : "Pay with USDC (x402)",
-      enabled: env.hasWallet,
-      reason: env.hasWallet ? undefined : "No web3 wallet detected.",
+      // Always clickable: with no wallet injected, clicking surfaces an
+      // actionable "get a wallet" prompt (Chris, QA 2026-08-12) instead of a
+      // dead grey tile the reader can't interrogate.
+      enabled: true,
+      reason: env.hasWallet ? undefined : "Needs a web3 wallet (e.g. MetaMask) — click for details.",
       priceLabel: fmtMicros(offer.x402.priceMicros, offer.x402.currency),
     });
   }

@@ -64,7 +64,7 @@ export async function fetchOffer(contentId: string): Promise<SignedOffer> {
     return (await res.json()) as SignedOffer;
   }
   if (res.status === 404) {
-    throw new UnlockError("This content is unavailable.", "unknown_content");
+    throw new UnlockError("This content isn't set up for unlocking yet.", "unknown_content");
   }
   throw new UnlockError("Could not load unlock options.", `offer_${res.status}`);
 }

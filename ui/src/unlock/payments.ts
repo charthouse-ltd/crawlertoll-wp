@@ -117,8 +117,14 @@ async function ensureChain(domain: { chainId: number }): Promise<void> {
  */
 export async function payX402(contentId: string, offer: SignedOffer): Promise<string> {
   const x = offer.x402;
-  if (!x || !x.payTo || !window.ethereum) {
+  if (!x || !x.payTo) {
     throw new UnlockError("USDC unlock is unavailable.", "x402_unavailable");
+  }
+  if (!window.ethereum) {
+    throw new UnlockError(
+      "No web3 wallet found in this browser. Install MetaMask (or open this page in your wallet's built-in browser), then try again.",
+      "x402_no_wallet",
+    );
   }
   const domain = x.eip712;
   if (!domain) {
