@@ -54,6 +54,7 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
   const [tiles, setTiles] = useState<RailTile[]>([]);
   const [error, setError] = useState("");
   const [bodyHtml, setBodyHtml] = useState("");
+  const [walletHint, setWalletHint] = useState(false);
   const [stripePass, setStripePass] = useState("");
   const stripeNode = useRef<HTMLDivElement>(null);
   const stripeConfirm = useRef<null | (() => Promise<string>)>(null);
@@ -133,10 +134,18 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
       setState("stripe");
     } else if (tile.rail === "x402" && offer) {
       setState("processing");
+      // A LOCKED wallet makes eth_requestAccounts hang silently — no rejection,
+      // no event. If we're still waiting after a few seconds, say where the
+      // reader should look instead of spinning "Processing…" forever.
+      setWalletHint(false);
+      const hintTimer = window.setTimeout(() => setWalletHint(true), 2500);
       try {
         await reveal(await payX402(contentId, offer));
       } catch (e) {
         fail(e);
+      } finally {
+        window.clearTimeout(hintTimer);
+        setWalletHint(false);
       }
     }
   };
@@ -208,7 +217,14 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
           {footer}
         </>
       ) : state === "loading" || state === "processing" ? (
-        <p style={{ fontSize: 14, color: "var(--ct-muted)" }}>{state === "processing" ? "Confirming payment…" : "Loading…"}</p>
+        <>
+          <p style={{ fontSize: 14, color: "var(--ct-muted)" }}>{state === "processing" ? "Confirming payment…" : "Loading…"}</p>
+          {state === "processing" && walletHint ? (
+            <p style={{ fontSize: 13, color: "var(--ct-muted)", marginTop: 6 }}>
+              Waiting for your wallet — it may be locked or holding a confirmation. Check MetaMask to continue.
+            </p>
+          ) : null}
+        </>
       ) : state === "stripe" ? (
         <>
           <div ref={stripeNode} style={{ minHeight: 40 }} />
