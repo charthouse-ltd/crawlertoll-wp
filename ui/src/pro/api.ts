@@ -185,6 +185,10 @@ export function money(micros: number | undefined, currency = proConfig.currency,
   return `${sym}${((micros ?? 0) / 1_000_000).toFixed(decimals)}`;
 }
 
-export function compact(n: number): string {
-  return new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 }).format(n);
+export function compact(n: number | undefined | null): string {
+  // Empty stats periods arrive as undefined/null/SQL-strings — never render "NaN".
+  const v = Number(n);
+  return new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 }).format(
+    Number.isFinite(v) ? v : 0,
+  );
 }
