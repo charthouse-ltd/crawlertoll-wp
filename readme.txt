@@ -8,13 +8,13 @@ Stable tag: 0.2.0
 License: Apache-2.0 OR GPL-2.0-or-later
 License URI: https://www.apache.org/licenses/LICENSE-2.0
 
-Make AI crawlers pay for your content. Detects 30+ AI bots, applies RSL 1.0 policy, and issues HTTP 402 Payment Required — vendor-neutral, works with Cloudflare, TollBit, Skyfire, x402, or Stripe.
+Make AI crawlers pay for your content. Detects 30 AI crawlers, applies RSL 1.0 policy, and issues HTTP 402 Payment Required — vendor-neutral, works with Cloudflare, TollBit, Skyfire, x402, or Stripe.
 
 == Description ==
 
 CrawlerToll is the open-source WordPress plugin for the AI-crawler economy. On every front-end request, it:
 
-1. **Detects** AI crawlers via a curated catalogue of 30+ operators — GPTBot, ChatGPT-User, ClaudeBot, Claude-User, Google-Extended, Applebot-Extended, PerplexityBot, Meta-ExternalAgent, Bytespider, CCBot, Cohere, Mistral, You.com, Diffbot, Bright Data, and more.
+1. **Detects** AI crawlers via a curated catalogue of 30 declared AI-crawler user-agents — GPTBot, ChatGPT-User, ClaudeBot, Claude-User, Google-Extended, Applebot-Extended, PerplexityBot, Meta-ExternalAgent, Bytespider, CCBot, Cohere, Mistral, You.com, Diffbot, Bright Data, and more.
 2. **Applies** your [RSL 1.0](https://rslstandard.org/) robots.txt policy — `License:`, `Permits:`, `Prohibits:`, `Compensation:`, `Standard: RSL/1.0` directives — to the request path.
 3. **Issues** HTTP 402 with Cloudflare-shape `Crawler-Price`, `Crawler-Price-Rail`, and `Link` headers plus a structured JSON payment offer when policy says so. Or 403 (block) when policy disallows without compensation. Or passes through with `X-CrawlerToll-Action`, `X-CrawlerToll-Operator`, `X-CrawlerToll-Bot-Name` headers for downstream logging.
 
@@ -65,7 +65,7 @@ The AI-crawler-monetization space consolidated around **standards** in 2025–20
 * `crawlertoll-cloudflare-template` — fork-and-deploy CF Workers template
 * `crawlertoll-vercel-template` — fork-and-deploy Vercel Edge template
 
-Find them all at [crawlertoll.com](https://crawlertoll.com) and on npm.
+The WordPress plugin is the first shipping adapter; the JS packages are in open development at [crawlertoll.com](https://crawlertoll.com).
 
 == Installation ==
 
@@ -122,17 +122,24 @@ Standard WordPress: Plugins → Deactivate → Delete. The plugin removes its ow
 
 == Changelog ==
 
+= 0.2.0 =
+
+* Sealed-content engine: premium post bodies are AES-256-GCM encrypted; the key releases only against a settled payment.
+* Unlock app: readers pay by card (Stripe) or USDC (x402) and decrypt in place; unlocked access persists across reloads.
+* Key escrow + settlement via the CrawlerToll registry (x402 V1 + V2, PAYMENT-* headers).
+* Fail-closed cache safety for premium pages.
+
 = 0.1.1 — 2026-05-21 =
 
 * New modern admin dashboard UI with status cards, bot catalogue browser, and live curl tester.
 * Performance: admin assets enqueued only on the CrawlerToll settings page.
 * Improved toggle switch for enable/disable.
-* Bot catalogue shows all 30+ tracked crawlers with category colour coding and filter.
+* Bot catalogue shows all 30 tracked crawlers with category colour coding and filter.
 
 = 0.1.0 — 2026-05-19 =
 
 * Initial public release.
-* 30+ AI-crawler User-Agent catalogue.
+* 30 AI-crawler User-Agent catalogue.
 * RSL 1.0 robots.txt parser + matcher.
 * HTTP 402 issuance with Cloudflare-shape headers + structured JSON offer.
 * `/robots.txt` augmentation via the standard `robots_txt` filter.
