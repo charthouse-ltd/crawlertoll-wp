@@ -201,25 +201,34 @@ $site_url = home_url();
 	<div class="ct-card">
 		<h2>
 			<span class="dashicons dashicons-editor-code"></span>
-			<?php esc_html_e( 'RSL 1.0 Policy', 'crawlertoll' ); ?>
+			<?php esc_html_e( 'Your AI-crawler rules', 'crawlertoll' ); ?>
 		</h2>
 		<p class="ct-card-desc">
-			<?php
-			printf(
-				/* translators: %s: link to RSL spec */
-				esc_html__( 'Your robots.txt policy extended with RSL 1.0 directives. Appended to /robots.txt and applied per-request. See the %s for the full directive vocabulary.', 'crawlertoll' ),
-				'<a href="https://rslstandard.org/" target="_blank" rel="noopener">RSL 1.0 spec</a>'
-			);
-			?>
+			<?php esc_html_e( 'This is the rulebook your site hands to AI crawlers: who may read your content and at what price. It is written in a machine-readable standard (RSL 1.0, an extension of robots.txt) and is published automatically at /robots.txt.', 'crawlertoll' ); ?>
+			<strong><?php esc_html_e( 'You normally never need to touch this — the defaults already charge every known AI crawler your standard price.', 'crawlertoll' ); ?></strong>
 		</p>
-		<textarea
-			id="crawlertoll-policy"
-			name="<?php echo esc_attr( CRAWLERTOLL_OPTION_KEY ); ?>[policy]"
-			rows="18"
-			cols="80"
-			class="large-text code"
-			spellcheck="false"
-		><?php echo esc_textarea( $settings['policy'] ); ?></textarea>
+		<details style="margin-top:4px;">
+			<summary style="cursor:pointer;font-weight:600;font-size:13px;color:var(--ct-primary);">
+				<?php esc_html_e( 'Advanced: view or edit the raw policy', 'crawlertoll' ); ?>
+			</summary>
+			<p class="ct-card-desc" style="margin-top:10px;">
+				<?php
+				printf(
+					/* translators: %s: link to RSL spec */
+					esc_html__( 'Raw RSL 1.0 directives, applied per request. Edit only if you know the syntax — a malformed rule can open content you meant to charge for. Full vocabulary: %s.', 'crawlertoll' ),
+					'<a href="https://rslstandard.org/" target="_blank" rel="noopener">RSL 1.0 spec</a>'
+				);
+				?>
+			</p>
+			<textarea
+				id="crawlertoll-policy"
+				name="<?php echo esc_attr( CRAWLERTOLL_OPTION_KEY ); ?>[policy]"
+				rows="18"
+				cols="80"
+				class="large-text code"
+				spellcheck="false"
+			><?php echo esc_textarea( $settings['policy'] ); ?></textarea>
+		</details>
 	</div>
 
 	<!-- Curl tester -->
