@@ -248,6 +248,33 @@ class CrawlerToll_Admin {
 		$bots     = CrawlerToll_Bot_Catalogue::all();
 		$rails    = crawlertoll_rail_options();
 
+		// Recent unlocks (lineup freeze D3, free tier): read the registry's
+		// unlock-receipt store. Cached 60s so a slow/unreachable registry never
+		// stalls the settings page; fail-soft — the view renders a graceful note
+		// on WP_Error. Only fetched when the site is enrolled (no token, no data).
+		$recent_unlocks       = array();
+		$recent_unlocks_error = null;
+		if ( class_exists( 'CrawlerToll_Registry' ) && CrawlerToll_Registry::is_registered() ) {
+			$cached = get_transient( 'crawlertoll_recent_unlocks' );
+			if ( false !== $cached ) {
+				$recent_unlocks       = $cached['rows'];
+				$recent_unlocks_error = $cached['error'];
+			} else {
+				$registry = new CrawlerToll_Registry();
+				$result   = $registry->recent_unlocks( 25 );
+				if ( is_wp_error( $result ) ) {
+					$recent_unlocks_error = $result->get_error_message();
+				} else {
+					$recent_unlocks = $result;
+				}
+				set_transient(
+					'crawlertoll_recent_unlocks',
+					array( 'rows' => $recent_unlocks, 'error' => $recent_unlocks_error ),
+					60
+				);
+			}
+		}
+
 		// Count bot categories for the status cards.
 		$category_counts = array();
 		foreach ( $bots as $bot ) {

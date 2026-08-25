@@ -189,6 +189,45 @@ class CrawlerToll_Registry {
 	}
 
 	/**
+	 * Recent unlock receipts for this site (lineup freeze D3, free tier).
+	 *
+	 * Read back from the registry's store — no local DB. Answers the publisher's
+	 * "did anyone actually pay?" question; the full query/export cockpit is Pro.
+	 * Fail-soft: returns WP_Error on transport/auth/store problems so the caller
+	 * can render a graceful note instead of breaking the settings page.
+	 *
+	 * @param int $limit Max receipts (registry caps at 100).
+	 * @return array<int,array{id:string,content_id:string,rail:string,ref:?string,buyer:?string,created_at:int}>|WP_Error
+	 */
+	public function recent_unlocks( $limit = 25 ) {
+		$publisher = wp_parse_url( home_url(), PHP_URL_HOST );
+
+		$response = wp_remote_get(
+			self::base_url() . '/v1/sealed/receipts?publisher=' . rawurlencode( $publisher ) . '&limit=' . (int) $limit,
+			array(
+				'headers' => array(
+					'Authorization' => 'Bearer ' . $this->get_registry_key(),
+				),
+				'timeout' => 15,
+			)
+		);
+
+		if ( is_wp_error( $response ) ) {
+			return $response;
+		}
+
+		$data = json_decode( wp_remote_retrieve_body( $response ), true );
+
+		if ( ! is_array( $data ) || ! isset( $data['unlocks'] ) || ! is_array( $data['unlocks'] ) ) {
+			$code = wp_remote_retrieve_response_code( $response );
+			$err  = is_array( $data ) && isset( $data['error'] ) ? (string) $data['error'] : 'unexpected_response';
+			return new WP_Error( 'crawlertoll_receipts', $err, array( 'status' => $code ) );
+		}
+
+		return $data['unlocks'];
+	}
+
+	/**
 	 * Delist from the registry.
 	 *
 	 * @return array|WP_Error

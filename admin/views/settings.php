@@ -9,6 +9,8 @@
  * @var array        $policy_data     Parsed RSL policy.
  * @var int          $active_bots     Number of User-agent entries in the active policy.
  * @var int          $active_groups   Number of agent groups in the active policy.
+ * @var array        $recent_unlocks  Latest unlock receipts from the registry (D3).
+ * @var string|null  $recent_unlocks_error Registry read-back error, if any.
  *
  * @package CrawlerToll
  */
@@ -312,6 +314,102 @@ $site_url = home_url();
 			</div>
 		</div>
 		<script type="application/json" id="ct-bot-data"><?php echo wp_json_encode( $bots ); ?></script>
+	</div>
+
+	<!-- Recent unlocks (D3, free tier) -->
+	<div class="ct-card">
+		<h2>
+			<span class="dashicons dashicons-tickets-alt"></span>
+			<?php esc_html_e( 'Recent unlocks', 'crawlertoll' ); ?>
+		</h2>
+		<p class="ct-card-desc">
+			<?php esc_html_e( 'Every paid unlock of your sealed content leaves a receipt in the CrawlerToll Registry. These are your latest ones — proof that buyers (crawlers or humans) actually got in.', 'crawlertoll' ); ?>
+		</p>
+
+		<?php if ( ! CrawlerToll_Registry::is_registered() ) : ?>
+			<p style="color:var(--ct-text-muted);font-size:13px;margin:0;">
+				<?php esc_html_e( 'Your site is not enrolled with the registry yet. Enrollment happens automatically the first time you seal an article — receipts will appear here after the first paid unlock.', 'crawlertoll' ); ?>
+			</p>
+		<?php elseif ( $recent_unlocks_error ) : ?>
+			<p style="color:var(--ct-text-muted);font-size:13px;margin:0;">
+				<?php
+				printf(
+					/* translators: %s: error detail from the registry */
+					esc_html__( 'Receipts are unavailable right now (%s). Nothing is lost — unlocks keep working; this list is just a read-back from the registry.', 'crawlertoll' ),
+					esc_html( $recent_unlocks_error )
+				);
+				?>
+			</p>
+		<?php elseif ( empty( $recent_unlocks ) ) : ?>
+			<p style="color:var(--ct-text-muted);font-size:13px;margin:0;">
+				<?php esc_html_e( 'No unlocks yet — receipts appear here after the first paid unlock of a sealed article.', 'crawlertoll' ); ?>
+			</p>
+		<?php else : ?>
+			<table class="widefat striped" style="margin-top:4px;">
+				<thead>
+					<tr>
+						<th><?php esc_html_e( 'When', 'crawlertoll' ); ?></th>
+						<th><?php esc_html_e( 'Content', 'crawlertoll' ); ?></th>
+						<th><?php esc_html_e( 'Paid via', 'crawlertoll' ); ?></th>
+						<th><?php esc_html_e( 'Receipt', 'crawlertoll' ); ?></th>
+					</tr>
+				</thead>
+				<tbody>
+					<?php foreach ( $recent_unlocks as $unlock ) : ?>
+						<?php
+						$unlock_post_id = 0;
+						if ( ! empty( $unlock['content_id'] ) && preg_match( '#/post/(\d+)$#', (string) $unlock['content_id'], $m ) ) {
+							$unlock_post_id = (int) $m[1];
+						}
+						$unlock_ref = isset( $unlock['ref'] ) ? (string) $unlock['ref'] : '';
+						if ( strlen( $unlock_ref ) > 18 ) {
+							$unlock_ref = substr( $unlock_ref, 0, 10 ) . '…' . substr( $unlock_ref, -6 );
+						}
+						?>
+						<tr>
+							<td>
+								<?php
+								if ( ! empty( $unlock['created_at'] ) ) {
+									printf(
+										/* translators: %s: human-readable time difference */
+										esc_html__( '%s ago', 'crawlertoll' ),
+										esc_html( human_time_diff( (int) $unlock['created_at'], time() ) )
+									);
+								} else {
+									echo '—';
+								}
+								?>
+							</td>
+							<td>
+								<?php if ( $unlock_post_id && get_post( $unlock_post_id ) ) : ?>
+									<a href="<?php echo esc_url( get_permalink( $unlock_post_id ) ); ?>" target="_blank" rel="noopener">
+										<?php echo esc_html( get_the_title( $unlock_post_id ) ); ?>
+									</a>
+								<?php else : ?>
+									<code style="font-size:11px;"><?php echo esc_html( (string) $unlock['content_id'] ); ?></code>
+								<?php endif; ?>
+							</td>
+							<td>
+								<span class="ct-endpoint-status active" style="text-transform:uppercase;">
+									<?php echo esc_html( (string) $unlock['rail'] ); ?>
+								</span>
+							</td>
+							<td>
+								<?php if ( '' !== $unlock_ref ) : ?>
+									<code style="font-size:11px;" title="<?php echo esc_attr( (string) $unlock['ref'] ); ?>"><?php echo esc_html( $unlock_ref ); ?></code>
+								<?php else : ?>
+									—
+								<?php endif; ?>
+							</td>
+						</tr>
+					<?php endforeach; ?>
+				</tbody>
+			</table>
+		<?php endif; ?>
+
+		<p style="font-size:12px;color:var(--ct-text-muted);margin:12px 0 0 0;">
+			<?php esc_html_e( 'Showing the 25 most recent unlocks. The full revenue dashboard — history, filtering, CSV export — is part of CrawlerToll Pro.', 'crawlertoll' ); ?>
+		</p>
 	</div>
 
 	<!-- Discovery endpoints -->
