@@ -205,3 +205,28 @@ tamper-evident record of *"this content was served to this crawler at this time.
 A `402` response serves no content (just the payment offer), so only **allowed,
 served** requests carry a fingerprint — which is exactly what you'd want to prove
 what an AI crawler actually ingested.
+
+---
+
+## Planned (post-launch) — maintainer note, NOT shipped copy
+
+> Nothing in this section exists yet. Do not quote it on sales pages, in
+> readme.txt, or in any user-facing material until the feature ships and this
+> note moves up into the guide proper.
+
+### Accounting documents (Pro cockpit)
+
+Downloadable **PDF receipt per unlock** and a **monthly statement** built from
+the registry's unlock-receipt store (D3 data). Purpose: B2B buyers (e.g. an AI
+lab's accounting department) often need a proper document for expenses even
+though they prepaid.
+
+- These are **documents of payment, never requests for payment** — the product
+  model stays settle-then-serve. No post-paid invoicing, no credit terms, no
+  dunning. If a large buyer wants terms later, the answer is a prepaid
+  balance/tab, not invoices.
+- Stripe rail: Stripe's own receipts/invoices already apply (publisher's own
+  account); our documents cover the x402 rail and give a unified cross-rail
+  record.
+- Data source is already live: `unlock_receipts` (registry) +
+  `GET /v1/sealed/receipts`; Pro cockpit renders from the same read-back.

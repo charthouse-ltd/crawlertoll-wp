@@ -87,6 +87,12 @@ You should see a `402 Payment Required` response with the `Crawler-Price` header
 
 Yes. CrawlerToll Pro adds per-path pricing, per-crawler rail routing, a revenue dashboard, filterable bot-request logs with CSV/JSON export, email alerts, content provenance, and automatic log retention. The free plugin's detection and 402 enforcement remain fully functional without it. See [crawlertoll.com](https://crawlertoll.com).
 
+= Do I have to invoice anyone? =
+
+No — payment settles *before* access. When a crawler or reader pays, the money lands directly in your own Stripe account or wallet, and only then is the content unlocked. There is no credit, no monthly billing cycle, and nothing to chase.
+
+Every paid unlock leaves a receipt you can read back in **Settings → CrawlerToll** (recent unlocks; Pro adds full history with CSV export). On the Stripe rail, Stripe's own receipts, invoices and tax reports apply automatically, since payments run through your account. On the x402 rail, the on-chain transaction hash is the receipt, linked in the unlock record to the exact article and time.
+
 = Will this block Google or Bing from crawling my site? =
 
 No. The default policy targets specifically *AI* crawlers — GPTBot, ClaudeBot, PerplexityBot, Google-Extended (Google's training-data crawler, *not* Googlebot), Applebot-Extended (Apple's training crawler, *not* Applebot), etc. Search-engine crawlers continue to index your site normally unless you explicitly add them to the policy.
