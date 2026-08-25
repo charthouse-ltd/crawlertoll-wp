@@ -208,6 +208,10 @@ class CrawlerToll_Admin {
 			}
 		}
 		$out['payment_url']         = isset( $input['payment_url'] ) ? esc_url_raw( trim( $input['payment_url'] ) ) : '';
+		// Apple Pay domain verification file contents (Stripe Dashboard → payment
+		// method domains). Served verbatim at /.well-known/apple-developer-
+		// merchantid-domain-association; harmless text token, strip tags only.
+		$out['apple_pay_domain_association'] = isset( $input['apple_pay_domain_association'] ) ? trim( sanitize_textarea_field( wp_unslash( $input['apple_pay_domain_association'] ) ) ) : '';
 		$out['terms_url']           = isset( $input['terms_url'] ) ? esc_url_raw( trim( $input['terms_url'] ) ) : '';
 		$out['context_license_url'] = isset( $input['context_license_url'] ) ? esc_url_raw( trim( $input['context_license_url'] ) ) : '';
 		$out['policy']              = isset( $input['policy'] ) ? sanitize_textarea_field( wp_unslash( $input['policy'] ) ) : $defaults['policy'];

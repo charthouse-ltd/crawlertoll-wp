@@ -72,7 +72,9 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
   const [bodyHtml, setBodyHtml] = useState("");
   const [walletHint, setWalletHint] = useState(false);
   const [stripePass, setStripePass] = useState("");
+  const [expressUp, setExpressUp] = useState(false);
   const stripeNode = useRef<HTMLDivElement>(null);
+  const stripeExpressNode = useRef<HTMLDivElement>(null);
   const stripeConfirm = useRef<null | (() => Promise<string>)>(null);
 
   const fail = (e: unknown) => {
@@ -167,12 +169,35 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
   };
 
   // Mount the Stripe Payment Element once the stripe node is in the DOM.
+  // The Express Checkout slot (one-tap Apple Pay / Google Pay / Link) mounts
+  // above the card form; it collapses itself when no wallet is available.
   useEffect(() => {
     if (state !== "stripe" || !stripeNode.current || !stripePass) {
       return;
     }
     let cancelled = false;
-    startStripe(contentId, stripePass, stripeNode.current)
+    startStripe(
+      contentId,
+      stripePass,
+      stripeNode.current,
+      stripeExpressNode.current,
+      async (cek) => {
+        if (!cancelled) {
+          await reveal(cek);
+        }
+      },
+      (message) => {
+        if (!cancelled) {
+          setError(message);
+          setState("error");
+        }
+      },
+      (available) => {
+        if (!cancelled) {
+          setExpressUp(available);
+        }
+      },
+    )
       .then((confirm) => {
         if (!cancelled) {
           stripeConfirm.current = confirm;
@@ -186,6 +211,7 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state, stripePass, contentId]);
 
   const confirmStripe = async () => {
@@ -247,6 +273,10 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
         </>
       ) : state === "stripe" ? (
         <>
+          <div ref={stripeExpressNode} style={{ marginBottom: 4 }} />
+          {expressUp ? (
+            <p style={{ fontSize: 12, color: "var(--ct-muted)", textAlign: "center", margin: "8px 0" }}>or pay with card</p>
+          ) : null}
           <div ref={stripeNode} style={{ minHeight: 40 }} />
           <button type="button" onClick={confirmStripe} style={btn}>
             Pay &amp; unlock

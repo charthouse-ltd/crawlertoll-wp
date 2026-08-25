@@ -210,6 +210,7 @@ function crawlertoll_default_settings() {
 		'currency'             => 'USD',
 		'rail'                 => 'x402',
 		'x402_pay_to'          => '',
+		'apple_pay_domain_association' => '',
 		'payment_url'          => '',
 		'terms_url'            => '',
 		'context_license_url'  => '',

@@ -167,6 +167,23 @@ $site_url = home_url();
 			</tr>
 			<tr>
 				<th scope="row">
+					<label for="crawlertoll-apple-pay"><?php esc_html_e( 'Apple Pay verification', 'crawlertoll' ); ?></label>
+				</th>
+				<td>
+					<textarea
+						id="crawlertoll-apple-pay"
+						class="large-text code"
+						rows="2"
+						name="<?php echo esc_attr( CRAWLERTOLL_OPTION_KEY ); ?>[apple_pay_domain_association]"
+						placeholder="<?php esc_attr_e( 'Paste the contents of the verification file Stripe gives you', 'crawlertoll' ); ?>"
+					><?php echo esc_textarea( isset( $settings['apple_pay_domain_association'] ) ? (string) $settings['apple_pay_domain_association'] : '' ); ?></textarea>
+					<p class="description">
+						<?php esc_html_e( 'Only needed for one-tap Apple Pay: in your Stripe Dashboard → Settings → Payment method domains, add this site’s domain, download the verification file, and paste its contents here. We serve it at /.well-known/apple-developer-merchantid-domain-association for you. Google Pay needs no verification.', 'crawlertoll' ); ?>
+					</p>
+				</td>
+			</tr>
+			<tr>
+				<th scope="row">
 					<label for="crawlertoll-payment-url"><?php esc_html_e( 'Payment URL', 'crawlertoll' ); ?></label>
 				</th>
 				<td>

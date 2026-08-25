@@ -394,14 +394,31 @@ class CrawlerToll_Plugin {
 
 	public function add_well_known_rewrite() {
 		add_rewrite_rule( '^\.well-known/context-license\.json$', 'index.php?crawlertoll_well_known=1', 'top' );
+		// Apple Pay domain verification (Stripe): the publisher pastes the file
+		// contents in Settings → CrawlerToll; we serve it here.
+		add_rewrite_rule( '^\.well-known/apple-developer-merchantid-domain-association$', 'index.php?crawlertoll_apple_pay=1', 'top' );
 	}
 
 	public function add_query_vars( $vars ) {
 		$vars[] = 'crawlertoll_well_known';
+		$vars[] = 'crawlertoll_apple_pay';
 		return $vars;
 	}
 
 	public function handle_well_known() {
+		if ( get_query_var( 'crawlertoll_apple_pay' ) ) {
+			$settings = crawlertoll_get_settings();
+			$file     = isset( $settings['apple_pay_domain_association'] ) ? trim( (string) $settings['apple_pay_domain_association'] ) : '';
+			if ( '' === $file ) {
+				status_header( 404 );
+				exit;
+			}
+			status_header( 200 );
+			header( 'Content-Type: text/plain; charset=utf-8' );
+			header( 'Cache-Control: public, max-age=300' );
+			echo $file; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Stripe verification file, verbatim
+			exit;
+		}
 		if ( ! get_query_var( 'crawlertoll_well_known' ) ) {
 			return;
 		}

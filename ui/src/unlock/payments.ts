@@ -10,9 +10,14 @@ interface StripeLike {
   elements: (opts: { clientSecret: string }) => StripeElements;
   confirmPayment: (opts: { elements: StripeElements; redirect: "if_required" }) => Promise<{ error?: { message?: string }; paymentIntent?: { status: string } }>;
 }
+interface StripeElementHandle {
+  mount: (sel: string | HTMLElement) => void;
+  on?: (event: string, cb: (ev: { availablePaymentMethods?: unknown; paymentFailed?: (o: { reason: string }) => void }) => void) => void;
+}
 interface StripeElements {
-  create: (type: string) => { mount: (sel: string | HTMLElement) => void };
+  create: (type: string, opts?: Record<string, unknown>) => StripeElementHandle;
   getElement?: (type: string) => unknown;
+  submit?: () => Promise<{ error?: { message?: string } }>;
 }
 
 declare global {
@@ -39,10 +44,24 @@ function loadStripeJs(): Promise<void> {
 
 /**
  * Stripe: create the intent, mount the Payment Element into `mountNode`, and
- * return a confirm() the UI calls when the reader submits. On success it redeems
- * the key and returns the CEK.
+ * return a confirm() the UI calls when the reader submits the card form.
+ *
+ * When `expressNode` is also given, an Express Checkout Element (Apple Pay /
+ * Google Pay / Link — whatever the reader's device AND the publisher's Stripe
+ * account actually offer) mounts there for one-tap payment; it hides itself
+ * when no wallet is available. Its success path resolves the CEK the same way
+ * the card form does and hands it to `onExpressPaid`; failures go to
+ * `onExpressError` so the UI can show them in context.
  */
-export async function startStripe(contentId: string, passId: string, mountNode: HTMLElement): Promise<() => Promise<string>> {
+export async function startStripe(
+  contentId: string,
+  passId: string,
+  mountNode: HTMLElement,
+  expressNode?: HTMLElement | null,
+  onExpressPaid?: (cek: string) => void | Promise<void>,
+  onExpressError?: (message: string) => void,
+  onExpressReady?: (available: boolean) => void,
+): Promise<() => Promise<string>> {
   if (!window.Stripe) {
     await loadStripeJs();
   }
@@ -53,6 +72,40 @@ export async function startStripe(contentId: string, passId: string, mountNode: 
   const { client_secret, intent_id } = await createStripeIntent(contentId, passId);
   const elements = stripe.elements({ clientSecret: client_secret });
   elements.create("payment").mount(mountNode);
+
+  if (expressNode && onExpressPaid) {
+    const express = elements.create("expressCheckout");
+    if (express.on) {
+      express.on("ready", (ev) => {
+        // No wallet on this device/account → collapse the slot entirely; the
+        // card form below is the always-present path.
+        const available = !!ev.availablePaymentMethods;
+        if (!available) {
+          expressNode.style.display = "none";
+        }
+        onExpressReady?.(available);
+      });
+      express.on("confirm", async (ev) => {
+        try {
+          const submit = elements.submit ? await elements.submit() : {};
+          if (submit.error) {
+            throw new UnlockError(submit.error.message || "Payment failed.", "stripe_submit");
+          }
+          const result = await stripe.confirmPayment({ elements, redirect: "if_required" });
+          if (result.error) {
+            throw new UnlockError(result.error.message || "Payment was declined.", "stripe_confirm");
+          }
+          const { cek } = await redeemStripe(contentId, passId, intent_id);
+          await onExpressPaid(cek);
+        } catch (e) {
+          // Tell the wallet sheet the attempt failed, then surface the reason.
+          ev.paymentFailed?.({ reason: "fail" });
+          onExpressError?.(e instanceof UnlockError ? e.message : "Payment failed.");
+        }
+      });
+    }
+    express.mount(expressNode);
+  }
 
   return async () => {
     const result = await stripe.confirmPayment({ elements, redirect: "if_required" });

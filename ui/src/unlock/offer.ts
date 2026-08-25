@@ -67,7 +67,11 @@ function fmtMicros(micros?: number, currency?: string): string {
     return "";
   }
   const sym = SYMBOLS[(currency || "USDC").toUpperCase()] ?? "";
-  return `${sym}${(micros / 1_000_000).toFixed(2)}`;
+  const v = micros / 1_000_000;
+  // Sub-cent prices are normal here (a crawl can cost $0.005) — toFixed(2)
+  // would display "$0.01" while charging $0.005. Show up to 4 decimals instead.
+  const str = v >= 0.01 ? v.toFixed(2) : v.toFixed(4).replace(/0+$/, "").replace(/\.$/, "");
+  return `${sym}${str}`;
 }
 
 /**
