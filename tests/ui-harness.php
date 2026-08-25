@@ -40,6 +40,10 @@ function render_settings() {
 	$policy_data     = array( 'groups' => array() );
 	$active_bots     = 1;
 	$active_groups   = 1;
+	// D3 card state (not-enrolled branch — keeps the harness free of registry stubs).
+	$recent_unlocks          = array();
+	$recent_unlocks_error    = null;
+	$recent_unlocks_enrolled = false;
 	ob_start();
 	include __DIR__ . '/../admin/views/settings.php';
 	return ob_get_clean();
@@ -54,5 +58,7 @@ ck( strlen( $html ) > 500, 'settings view renders (' . strlen( $html ) . ' bytes
 ck( strpos( $html, 'Payment offer' ) !== false, 'Payment offer card still present' );
 ck( strpos( $html, 'TOTAL gate' ) === false, 'TOTAL gate card removed (cut 2026-06-20)' );
 ck( strpos( $html, 'crawlertoll_settings[total_gate]' ) === false, 'total_gate checkbox removed' );
+ck( strpos( $html, 'Recent unlocks' ) !== false, 'D3 recent-unlocks card present' );
+ck( strpos( $html, 'not enrolled with the registry yet' ) !== false, 'D3 not-enrolled state renders' );
 
 exit( 0 === $fail ? 0 : 1 );

@@ -108,7 +108,7 @@ $GLOBALS['wpdb'] = new wpdb();
 
 // Load plugin constants
 define('ABSPATH', '/');
-define('CRAWLERTOLL_VERSION', '0.2.0');
+define('CRAWLERTOLL_VERSION', '2.0.0');
 define('CRAWLERTOLL_PLUGIN_FILE', __FILE__);
 define('CRAWLERTOLL_PLUGIN_DIR', __DIR__ . '/');
 define('CRAWLERTOLL_OPTION_KEY', 'crawlertoll_settings');

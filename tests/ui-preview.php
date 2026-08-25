@@ -42,6 +42,10 @@ $category_counts = array( 'training' => 2, 'search' => 1 );
 $policy_data     = array( 'groups' => array( array( 'user_agents' => array( 'GPTBot' ) ) ) );
 $active_bots     = 3;
 $active_groups   = 2;
+// D3 card state (not-enrolled branch).
+$recent_unlocks          = array();
+$recent_unlocks_error    = null;
+$recent_unlocks_enrolled = false;
 
 ob_start();
 include __DIR__ . '/../admin/views/settings.php';

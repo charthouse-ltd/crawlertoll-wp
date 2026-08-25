@@ -4,7 +4,7 @@ Tags: ai-crawler, gptbot, claudebot, pay-per-crawl, http-402, x402, rsl, robots-
 Requires at least: 6.0
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 0.2.0
+Stable tag: 2.0.0
 License: Apache-2.0 OR GPL-2.0-or-later
 License URI: https://www.apache.org/licenses/LICENSE-2.0
 
@@ -122,6 +122,15 @@ Standard WordPress: Plugins → Deactivate → Delete. The plugin removes its ow
 
 == Changelog ==
 
+= 2.0.0 =
+
+* Ground-up rebuild of the whole product. Configuration from 1.x does not carry over — after updating, open Settings → CrawlerToll and set pricing, payment rails and content rules again.
+* Sealed-content engine: protected post bodies are AES-256-GCM encrypted; the key releases only against a settled payment.
+* Unlock app: readers pay by card (Stripe) or USDC (x402) and decrypt in place; unlocked access persists across reloads.
+* Key escrow + settlement via the CrawlerToll registry (x402 V1 + V2, PAYMENT-* headers).
+* Recent unlocks: every paid unlock leaves a receipt you can read back in Settings → CrawlerToll.
+* Fail-closed cache safety for protected pages.
+
 = 0.2.0 =
 
 * Sealed-content engine: premium post bodies are AES-256-GCM encrypted; the key releases only against a settled payment.
@@ -148,6 +157,10 @@ Standard WordPress: Plugins → Deactivate → Delete. The plugin removes its ow
 * Dual-licensed Apache-2.0 + GPL-2.0-or-later.
 
 == Upgrade Notice ==
+
+= 2.0.0 =
+
+Ground-up rebuild. 1.x settings do not carry over — reconfigure pricing, payment rails and content rules in Settings → CrawlerToll after updating.
 
 = 0.1.0 =
 

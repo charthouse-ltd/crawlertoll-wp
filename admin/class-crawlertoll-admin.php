@@ -24,6 +24,8 @@ class CrawlerToll_Admin {
 	public function register() {
 		add_action( 'admin_menu', array( $this, 'register_menu' ) );
 		add_action( 'admin_init', array( $this, 'register_settings' ) );
+		add_action( 'admin_init', array( $this, 'handle_upgrade_notice_dismiss' ) );
+		add_action( 'admin_notices', array( $this, 'render_upgrade_notice' ) );
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
 
 		// Initialise Pro admin if available.
@@ -100,6 +102,73 @@ class CrawlerToll_Admin {
 				'default'           => crawlertoll_default_settings(),
 			)
 		);
+	}
+
+	/**
+	 * D1 (lineup freeze): any live 1.x install auto-updates into a ground-up
+	 * rebuild. Show a notice on admin loads after an upgrade from <2.0 until
+	 * dismissed — a changelog line reaches nobody, and this person's site just
+	 * changed behavior unasked.
+	 *
+	 * @return void
+	 */
+	public function render_upgrade_notice() {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			return;
+		}
+
+		$seen = get_option( 'crawlertoll_installed_version' );
+		if ( false === $seen ) {
+			// No marker: fresh 2.x installs set it in the activation hook, so
+			// arriving here without one means an upgrade from a release that
+			// predates version tracking (i.e. <2.0).
+			$seen = '1.0.1';
+		}
+		if ( ! version_compare( $seen, '2.0.0', '<' ) ) {
+			return;
+		}
+
+		$dismiss_url = wp_nonce_url(
+			add_query_arg( 'crawlertoll_dismiss_upgrade', '1' ),
+			'crawlertoll_dismiss_upgrade'
+		);
+		?>
+		<div class="notice notice-warning">
+			<p><strong><?php esc_html_e( 'CrawlerToll 2.0 — rebuilt from the ground up.', 'crawlertoll' ); ?></strong></p>
+			<p>
+				<?php esc_html_e( 'Your previous configuration does not carry over. Please open the CrawlerToll settings and set your pricing, payment rails and content rules again — it takes about two minutes.', 'crawlertoll' ); ?>
+			</p>
+			<p>
+				<a class="button button-primary" href="<?php echo esc_url( admin_url( 'options-general.php?page=crawlertoll' ) ); ?>">
+					<?php esc_html_e( 'Open CrawlerToll settings', 'crawlertoll' ); ?>
+				</a>
+				<a class="button" href="<?php echo esc_url( $dismiss_url ); ?>">
+					<?php esc_html_e( 'Dismiss', 'crawlertoll' ); ?>
+				</a>
+			</p>
+		</div>
+		<?php
+	}
+
+	/**
+	 * Handle the upgrade-notice dismiss link (nonce-checked). Marks the current
+	 * version as seen so the notice never returns for this install.
+	 *
+	 * @return void
+	 */
+	public function handle_upgrade_notice_dismiss() {
+		// phpcs:disable WordPress.Security.NonceVerification.Recommended
+		if ( ! isset( $_GET['crawlertoll_dismiss_upgrade'] ) ) {
+			return;
+		}
+		// phpcs:enable
+		if ( ! current_user_can( 'manage_options' ) ) {
+			return;
+		}
+		check_admin_referer( 'crawlertoll_dismiss_upgrade' );
+		update_option( 'crawlertoll_installed_version', CRAWLERTOLL_VERSION );
+		wp_safe_redirect( remove_query_arg( array( 'crawlertoll_dismiss_upgrade', '_wpnonce' ) ) );
+		exit;
 	}
 
 	/**
@@ -252,9 +321,10 @@ class CrawlerToll_Admin {
 		// unlock-receipt store. Cached 60s so a slow/unreachable registry never
 		// stalls the settings page; fail-soft — the view renders a graceful note
 		// on WP_Error. Only fetched when the site is enrolled (no token, no data).
-		$recent_unlocks       = array();
-		$recent_unlocks_error = null;
-		if ( class_exists( 'CrawlerToll_Registry' ) && CrawlerToll_Registry::is_registered() ) {
+		$recent_unlocks          = array();
+		$recent_unlocks_error    = null;
+		$recent_unlocks_enrolled = class_exists( 'CrawlerToll_Registry' ) && CrawlerToll_Registry::is_registered();
+		if ( $recent_unlocks_enrolled ) {
 			$cached = get_transient( 'crawlertoll_recent_unlocks' );
 			if ( false !== $cached ) {
 				$recent_unlocks       = $cached['rows'];

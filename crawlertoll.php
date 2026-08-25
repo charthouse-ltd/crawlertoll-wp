@@ -3,7 +3,7 @@
  * Plugin Name:       CrawlerToll
  * Plugin URI:        https://crawlertoll.com
  * Description:       AI-crawler enforcement for WordPress. Detects AI crawlers (GPTBot, ClaudeBot, PerplexityBot, Google-Extended, +25 more), applies RSL 1.0 policy, and issues HTTP 402 with a structured payment offer. Vendor-neutral; works with TollBit, Skyfire, x402, Cloudflare Pay Per Crawl, and Stripe ACP.
- * Version:           0.2.0
+ * Version:           2.0.0
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            Charthouse Ltd
@@ -75,7 +75,7 @@ if ( ! function_exists( 'crawlertoll_fs' ) && file_exists( __DIR__ . '/vendor/fr
 }
 // @ct-build:freemius-end
 
-define( 'CRAWLERTOLL_VERSION', '0.2.0' );
+define( 'CRAWLERTOLL_VERSION', '2.0.0' );
 define( 'CRAWLERTOLL_PLUGIN_FILE', __FILE__ );
 define( 'CRAWLERTOLL_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'CRAWLERTOLL_OPTION_KEY', 'crawlertoll_settings' );
@@ -298,6 +298,13 @@ register_activation_hook(
 			require_once $crawlertoll_db_file;
 			$db = new CrawlerToll_DB( $GLOBALS['wpdb'] );
 			$db->maybe_create_table();
+		}
+		// D1 (lineup freeze): version marker. Fresh installs set it here and never
+		// see the post-upgrade notice; upgrades from <2.0 (no marker — update does
+		// NOT fire the activation hook) get the "rebuilt, reconfigure" notice on
+		// their first admin load, until dismissed.
+		if ( get_option( 'crawlertoll_installed_version' ) === false ) {
+			add_option( 'crawlertoll_installed_version', CRAWLERTOLL_VERSION );
 		}
 		// F4 (live QA 2026-07-28): flush_rewrite_rules() here regenerates the ruleset
 		// BEFORE this plugin's init hooks have re-registered its rewrites, so the

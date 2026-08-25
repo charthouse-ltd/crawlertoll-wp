@@ -326,7 +326,7 @@ $site_url = home_url();
 			<?php esc_html_e( 'Every paid unlock of your sealed content leaves a receipt in the CrawlerToll Registry. These are your latest ones — proof that buyers (crawlers or humans) actually got in.', 'crawlertoll' ); ?>
 		</p>
 
-		<?php if ( ! CrawlerToll_Registry::is_registered() ) : ?>
+		<?php if ( ! $recent_unlocks_enrolled ) : ?>
 			<p style="color:var(--ct-text-muted);font-size:13px;margin:0;">
 				<?php esc_html_e( 'Your site is not enrolled with the registry yet. Enrollment happens automatically the first time you seal an article — receipts will appear here after the first paid unlock.', 'crawlertoll' ); ?>
 			</p>

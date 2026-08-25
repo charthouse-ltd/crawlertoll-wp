@@ -11,7 +11,9 @@
 $dir      = dirname( __DIR__ );
 $boot     = (string) file_get_contents( $dir . '/crawlertoll.php' );
 $proadmin = (string) file_get_contents( $dir . '/admin/class-crawlertoll-pro-admin.php' );
-$view     = (string) file_get_contents( $dir . '/admin/views/pro-logs.php' );
+// The retention control lives in its own partial (included by the logs renderer
+// ahead of pro-logs.php) — assert both the include and the control itself.
+$partial  = (string) file_get_contents( $dir . '/admin/views/pro-logs-retention.php' );
 
 $fail = 0;
 function ck( $c, $m ) { global $fail; echo ( $c ? 'PASS' : 'FAIL' ) . ": $m\n"; if ( ! $c ) { $fail++; } }
@@ -22,6 +24,7 @@ ck( strpos( $boot, 'function crawlertoll_run_log_purge' ) !== false, 'purge call
 ck( strpos( $boot, 'purge_old' ) !== false, 'callback calls purge_old()' );
 ck( strpos( $boot, "wp_clear_scheduled_hook( 'crawlertoll_purge_logs' )" ) !== false, 'deactivation clears the purge cron' );
 ck( strpos( $proadmin, 'crawlertoll_save_retention' ) !== false, 'Logs tab handles the retention save' );
-ck( strpos( $view, 'ct_retention_days' ) !== false, 'retention control rendered in the Logs view' );
+ck( strpos( $proadmin, "pro-logs-retention.php" ) !== false, 'logs renderer includes the retention partial' );
+ck( strpos( $partial, 'ct_retention_days' ) !== false, 'retention control rendered in the retention partial' );
 
 exit( $fail === 0 ? 0 : 1 );
