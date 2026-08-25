@@ -45,7 +45,7 @@ $site_url = home_url();
 					<span class="dashicons dashicons-networking"></span>
 				</div>
 				<div class="ct-stat-value"><?php echo count( $bots ); ?></div>
-				<div class="ct-stat-label"><?php esc_html_e( 'AI Crawlers Detected', 'crawlertoll' ); ?></div>
+				<div class="ct-stat-label"><?php esc_html_e( 'AI Crawlers Recognised', 'crawlertoll' ); ?></div>
 			</div>
 			<div class="ct-stat-card">
 				<div class="ct-stat-icon blue">

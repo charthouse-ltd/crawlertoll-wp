@@ -50,7 +50,7 @@ export function App() {
           <span className="dashicons dashicons-networking" />
         </div>
         <div className="ct-stat-value">{d.botCount}</div>
-        <div className="ct-stat-label">AI Crawlers Detected</div>
+        <div className="ct-stat-label">AI Crawlers Recognised</div>
       </div>
       <div className="ct-stat-card">
         <div className="ct-stat-icon blue">

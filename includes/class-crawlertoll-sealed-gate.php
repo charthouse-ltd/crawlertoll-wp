@@ -95,8 +95,23 @@ class CrawlerToll_Sealed_Gate {
 	 */
 	private static function get_or_create_sealed( $post_id, $plaintext, $cid, $settings ) {
 		$hash   = hash( 'sha256', $plaintext );
+		$price  = isset( $settings['price_micros'] ) ? (int) $settings['price_micros'] : 5000;
+		$curr   = isset( $settings['currency'] ) ? (string) $settings['currency'] : 'USD';
 		$cached = get_post_meta( $post_id, self::META_KEY, true );
 		if ( is_array( $cached ) && isset( $cached['hash'], $cached['blob'] ) && $cached['hash'] === $hash ) {
+			// Reprice without re-sealing when the commercial terms changed (audit
+			// 2026-08-25): the CEK stays valid, buyers' cached keys keep working.
+			// Fail-soft: a sync hiccup keeps serving at the registered price.
+			$cached_price = isset( $cached['price_micros'] ) ? (int) $cached['price_micros'] : -1;
+			$cached_curr  = isset( $cached['currency'] ) ? (string) $cached['currency'] : '';
+			if ( $cached_price !== $price || $cached_curr !== $curr ) {
+				$res = ( new CrawlerToll_Registry() )->update_sealed_price( $cid, $price, $curr );
+				if ( ! is_wp_error( $res ) ) {
+					$cached['price_micros'] = $price;
+					$cached['currency']     = $curr;
+					update_post_meta( $post_id, self::META_KEY, $cached );
+				}
+			}
 			return array( 'blob' => $cached['blob'] );
 		}
 
@@ -112,8 +127,8 @@ class CrawlerToll_Sealed_Gate {
 		$result   = $registry->register_sealed(
 			$cid,
 			$cek_b64,
-			isset( $settings['price_micros'] ) ? (int) $settings['price_micros'] : 5000,
-			isset( $settings['currency'] ) ? $settings['currency'] : 'USD',
+			$price,
+			$curr,
 			'full'
 		);
 		if ( is_wp_error( $result ) || empty( $result['status'] ) || 'registered' !== $result['status'] ) {
@@ -127,6 +142,8 @@ class CrawlerToll_Sealed_Gate {
 				'hash'          => $hash,
 				'content_id'    => $cid,
 				'blob'          => $blob,
+				'price_micros'  => $price,
+				'currency'      => $curr,
 				'registered_at' => current_time( 'mysql' ),
 			)
 		);

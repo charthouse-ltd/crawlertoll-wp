@@ -198,7 +198,17 @@
 			curlOutput.innerHTML = output;
 		});
 
-		// Run on load
+		// Run on load — but pre-select the first real crawler first: auto-clicking
+		// with the empty placeholder selected painted a red "select a User-Agent"
+		// error on every settings-page load (fresh-eyes audit 2026-08-25). A live
+		// GPTBot simulation is the intended demo.
+		var uaSelect = document.getElementById('ct-curl-ua');
+		if (uaSelect && !uaSelect.value) {
+			var firstReal = uaSelect.querySelector('option[value]:not([value=""])');
+			if (firstReal) {
+				uaSelect.value = firstReal.value;
+			}
+		}
 		curlBtn.click();
 	}
 

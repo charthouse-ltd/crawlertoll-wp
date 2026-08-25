@@ -228,6 +228,50 @@ class CrawlerToll_Registry {
 	}
 
 	/**
+	 * Reprice already-sealed content WITHOUT re-sealing (audit fix 2026-08-25).
+	 * The registry PATCH updates only the commercial terms — the CEK stays, so
+	 * existing buyers' cached keys keep working. Fail-soft: WP_Error means the
+	 * caller keeps serving at the previously registered price.
+	 *
+	 * @param string $content_id
+	 * @param int    $price_micros
+	 * @param string $currency
+	 * @return array|WP_Error
+	 */
+	public function update_sealed_price( $content_id, $price_micros, $currency ) {
+		$settings = wp_parse_args( (array) get_option( CRAWLERTOLL_OPTION_KEY ), crawlertoll_default_settings() );
+		$body     = array(
+			'publisher'    => wp_parse_url( home_url(), PHP_URL_HOST ),
+			'price_micros' => (int) $price_micros,
+			'currency'     => (string) $currency,
+		);
+		if ( ! empty( $settings['x402_pay_to'] ) && preg_match( '/^0x[0-9a-fA-F]{40}$/', (string) $settings['x402_pay_to'] ) ) {
+			$body['x402_pay_to'] = (string) $settings['x402_pay_to'];
+		}
+		$response = wp_remote_request(
+			self::base_url() . '/v1/sealed/' . $content_id . '/price',
+			array(
+				'method'  => 'PATCH',
+				'body'    => wp_json_encode( $body ),
+				'headers' => array(
+					'Content-Type'  => 'application/json',
+					'Authorization' => 'Bearer ' . $this->get_registry_key(),
+				),
+				'timeout' => 15,
+			)
+		);
+		if ( is_wp_error( $response ) ) {
+			return $response;
+		}
+		$data = json_decode( wp_remote_retrieve_body( $response ), true );
+		if ( ! is_array( $data ) || empty( $data['status'] ) || 'updated' !== $data['status'] ) {
+			$err = is_array( $data ) && isset( $data['error'] ) ? (string) $data['error'] : 'unexpected_response';
+			return new WP_Error( 'crawlertoll_reprice', $err, array( 'status' => wp_remote_retrieve_response_code( $response ) ) );
+		}
+		return $data;
+	}
+
+	/**
 	 * Delist from the registry.
 	 *
 	 * @return array|WP_Error

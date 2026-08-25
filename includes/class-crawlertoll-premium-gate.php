@@ -536,8 +536,28 @@ class CrawlerToll_Premium_Gate {
 		$body = $parts['body'];
 		$hash = hash( 'sha256', $body );
 
+		$settings = crawlertoll_get_settings();
+		$price    = (int) $settings['price_micros'];
+		$currency = (string) $settings['currency'];
+
 		$cached = get_post_meta( $post_id, self::SEAL_META, true );
 		if ( is_array( $cached ) && isset( $cached['hash'], $cached['blob'] ) && $cached['hash'] === $hash ) {
+			// Price/currency changed since this blob was escrowed? Reprice at the
+			// registry WITHOUT re-sealing (audit 2026-08-25): the CEK stays, so
+			// existing buyers' cached keys keep working. Fail-soft — a sync hiccup
+			// keeps serving at the previously registered price, never breaks content.
+			$cached_price = isset( $cached['price_micros'] ) ? (int) $cached['price_micros'] : -1;
+			$cached_curr  = isset( $cached['currency'] ) ? (string) $cached['currency'] : '';
+			if ( $cached_price !== $price || $cached_curr !== $currency ) {
+				$host = wp_parse_url( home_url(), PHP_URL_HOST );
+				$cid  = CrawlerToll_Sealed_Gate::build_content_id( $host, $post_id );
+				$res  = ( new CrawlerToll_Registry() )->update_sealed_price( $cid, $price, $currency );
+				if ( ! is_wp_error( $res ) ) {
+					$cached['price_micros'] = $price;
+					$cached['currency']     = $currency;
+					update_post_meta( $post_id, self::SEAL_META, $cached );
+				}
+			}
 			return $this->blob[ $post_id ] = $cached['blob'];
 		}
 
@@ -550,9 +570,8 @@ class CrawlerToll_Premium_Gate {
 			return $this->blob[ $post_id ] = false; // crypto unavailable → fail closed
 		}
 
-		$settings = crawlertoll_get_settings();
 		$registry = new CrawlerToll_Registry();
-		$res      = $registry->register_sealed( $cid, $cek_b64, (int) $settings['price_micros'], $settings['currency'], 'premium' );
+		$res      = $registry->register_sealed( $cid, $cek_b64, $price, $currency, 'premium' );
 		if ( is_wp_error( $res ) || empty( $res['status'] ) || 'registered' !== $res['status'] ) {
 			// Never serve a blob whose CEK the escrow didn't store — fail closed.
 			return $this->blob[ $post_id ] = false;
@@ -565,6 +584,8 @@ class CrawlerToll_Premium_Gate {
 				'hash'          => $hash,
 				'content_id'    => $cid,
 				'blob'          => $blob,
+				'price_micros'  => $price,
+				'currency'      => $currency,
 				'registered_at' => current_time( 'mysql' ),
 			)
 		);

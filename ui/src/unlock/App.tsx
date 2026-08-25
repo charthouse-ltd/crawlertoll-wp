@@ -45,9 +45,25 @@ const card: CSSProperties = {
   marginTop: 16,
 };
 
+// Price for the idle card (fresh-eyes audit 2026-08-25): a reader should never
+// have to click "Unlock" blind. The mount carries the publisher's configured
+// price (data-price-micros / data-currency) — no network call needed; the
+// rail menu after the click still shows the offer-authoritative price.
+function fmtIdlePrice(micros: number, currency: string): string | null {
+  if (!Number.isFinite(micros) || micros <= 0) return null;
+  const v = micros / 1_000_000;
+  const str = v >= 0.01 ? v.toFixed(2) : v.toFixed(4).replace(/0+$/, "").replace(/\.$/, "");
+  const sym: Record<string, string> = { USD: "$", EUR: "€", GBP: "£" };
+  return (sym[currency] ?? currency + " ") + str;
+}
+
 export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | null }) {
   const contentId = mount.dataset.contentId || blob?.content_id || "";
   const ready = !!blob && blob.magic === "ct_sealed_v1" && contentId !== "";
+  const idlePrice = fmtIdlePrice(
+    parseInt(mount.dataset.priceMicros || "0", 10),
+    mount.dataset.currency || "USD",
+  );
 
   const [state, setState] = useState<State>(ready ? "idle" : "unavailable");
   const [offer, setOffer] = useState<SignedOffer | null>(null);
@@ -210,9 +226,13 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
       ) : state === "idle" ? (
         <>
           <p style={{ fontSize: 15, fontWeight: 600 }}>Keep reading</p>
-          <p style={{ fontSize: 13, color: "var(--ct-muted)", margin: "4px 0 12px" }}>Unlock the rest of this article.</p>
+          <p style={{ fontSize: 13, color: "var(--ct-muted)", margin: "4px 0 12px" }}>
+            {idlePrice
+              ? `Unlock the rest of this article for ${idlePrice} — one-time, no subscription.`
+              : "Unlock the rest of this article."}
+          </p>
           <button type="button" onClick={loadMenu} style={btn}>
-            Unlock
+            {idlePrice ? `Unlock for ${idlePrice}` : "Unlock"}
           </button>
           {footer}
         </>
