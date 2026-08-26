@@ -110,19 +110,9 @@ export function offerToRails(offer: SignedOffer, env: UnlockEnv): RailTile[] {
     });
   }
 
-  // If there is no real rail at all, signal "unavailable" (no dead X-wallet tile).
-  if (tiles.length === 0) {
-    return [];
-  }
-
-  // X-wallet: always shown, always disabled until X ships a merchant API.
-  tiles.push({
-    rail: "xwallet",
-    key: "xwallet",
-    label: "Unlock with X",
-    enabled: false,
-    reason: "Coming soon.",
-  });
-
+  // Empty array ⇒ "unlock unavailable" (no configured rail). A disabled tile
+  // shows its reason rather than vanishing, so the reader knows why.
+  // (2026-08-26, Chris's call: the disabled "Unlock with X — Coming soon"
+  // teaser tile was removed — no unproven claims on a reader paywall.)
   return tiles;
 }
