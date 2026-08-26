@@ -275,6 +275,89 @@ class CrawlerToll_Pro_Admin {
 	}
 
 	/**
+	 * Render the unlock-webhooks tab (spec: docs/specs/unlock-webhooks-v1.md).
+	 * Endpoint URL + signing secret live in the crawlertoll_webhook option; the
+	 * registry stores its own copy (it signs with it). Three nonce'd actions:
+	 * save (configure/rotate/delete), test (fire webhook.test), and the passive
+	 * deliveries view (GET from the registry).
+	 *
+	 * @return void
+	 */
+	public function render_webhooks_tab() {
+		$registry = new CrawlerToll_Registry();
+		$wh       = (array) get_option( 'crawlertoll_webhook', array() );
+
+		// Save / rotate / delete.
+		if ( isset( $_POST['crawlertoll_webhook_nonce'] )
+			&& wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['crawlertoll_webhook_nonce'] ) ), 'crawlertoll_save_webhook' )
+			&& current_user_can( 'manage_options' )
+		) {
+			$url        = isset( $_POST['ct_webhook_url'] ) ? esc_url_raw( trim( sanitize_text_field( wp_unslash( $_POST['ct_webhook_url'] ) ) ) ) : '';
+			$regenerate = ! empty( $_POST['ct_webhook_regenerate'] );
+
+			if ( '' === $url ) {
+				// Empty URL = disable: delete the registry config and the local copy.
+				if ( ! empty( $wh['url'] ) ) {
+					$registry->save_webhook_config( null ); // Best-effort; local state clears regardless.
+				}
+				delete_option( 'crawlertoll_webhook' );
+				$wh = array();
+				echo '<div class="notice notice-success is-dismissible"><p>';
+				esc_html_e( 'Webhook disabled.', 'crawlertoll' );
+				echo '</p></div>';
+			} elseif ( 'https' !== wp_parse_url( $url, PHP_URL_SCHEME ) ) {
+				echo '<div class="notice notice-error is-dismissible"><p>';
+				esc_html_e( 'The webhook URL must be a public https:// address.', 'crawlertoll' );
+				echo '</p></div>';
+			} else {
+				$secret = ( ! $regenerate && ! empty( $wh['secret'] ) ) ? (string) $wh['secret'] : wp_generate_password( 48, false, false );
+				$result = $registry->save_webhook_config( $url, $secret );
+				if ( is_wp_error( $result ) ) {
+					echo '<div class="notice notice-error is-dismissible"><p>';
+					/* translators: %s: registry error code */
+					printf( esc_html__( 'Could not save the webhook: %s', 'crawlertoll' ), esc_html( $result->get_error_message() ) );
+					echo '</p></div>';
+				} else {
+					$wh = array( 'url' => $url, 'secret' => $secret );
+					update_option( 'crawlertoll_webhook', $wh );
+					echo '<div class="notice notice-success is-dismissible"><p>';
+					esc_html_e( 'Webhook saved. Every successful unlock is now POSTed to your endpoint.', 'crawlertoll' );
+					echo '</p></div>';
+				}
+			}
+		}
+
+		// Fire a test event.
+		if ( isset( $_POST['crawlertoll_webhook_test_nonce'] )
+			&& wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['crawlertoll_webhook_test_nonce'] ) ), 'crawlertoll_test_webhook' )
+			&& current_user_can( 'manage_options' )
+		) {
+			$delivery = $registry->test_webhook();
+			if ( is_wp_error( $delivery ) ) {
+				echo '<div class="notice notice-error is-dismissible"><p>';
+				/* translators: %s: registry error code */
+				printf( esc_html__( 'Test event failed: %s', 'crawlertoll' ), esc_html( $delivery->get_error_message() ) );
+				echo '</p></div>';
+			} else {
+				$ok = isset( $delivery['status'] ) && 'delivered' === $delivery['status'];
+				echo '<div class="notice ' . ( $ok ? 'notice-success' : 'notice-warning' ) . ' is-dismissible"><p>';
+				printf(
+					/* translators: 1: delivery status, 2: HTTP code from the endpoint */
+					esc_html__( 'Test event sent — status: %1$s, endpoint answered: %2$s.', 'crawlertoll' ),
+					esc_html( isset( $delivery['status'] ) ? (string) $delivery['status'] : '?' ),
+					esc_html( isset( $delivery['last_code'] ) ? (string) $delivery['last_code'] : '—' )
+				);
+				echo '</p></div>';
+			}
+		}
+
+		$configured = ! empty( $wh['url'] ) && ! empty( $wh['secret'] );
+		$deliveries = $configured ? $registry->webhook_deliveries( 10 ) : array();
+
+		include CRAWLERTOLL_PLUGIN_DIR . 'admin/views/pro-webhooks.php';
+	}
+
+	/**
 	 * Render the per-path pricing tab (§2.4). Longest-prefix path rules that
 	 * override the flat per-crawl price for matching request paths. Saves
 	 * through its own nonce'd form (read-modify-write of crawlertoll_settings)

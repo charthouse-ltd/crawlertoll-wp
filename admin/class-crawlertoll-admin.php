@@ -236,10 +236,11 @@ class CrawlerToll_Admin {
 			'revenue'   => __( 'Revenue', 'crawlertoll' ),
 			'logs'      => __( 'Logs', 'crawlertoll' ),
 			'rails'     => __( 'Rails', 'crawlertoll' ),
+			'webhooks'  => __( 'Webhooks', 'crawlertoll' ),
 		);
 
 		// If Pro isn't active, redirect Pro tabs to settings with a notice.
-		if ( ! $pro_active && in_array( $tab, array( 'pricing', 'alerts', 'revenue', 'logs', 'rails' ), true ) ) {
+		if ( ! $pro_active && in_array( $tab, array( 'pricing', 'alerts', 'revenue', 'logs', 'rails', 'webhooks' ), true ) ) {
 			$tab = 'settings';
 			add_action( 'admin_notices', function () {
 				echo '<div class="notice notice-info is-dismissible"><p>';
@@ -256,7 +257,7 @@ class CrawlerToll_Admin {
 
 		echo '<nav class="ct-tabs" style="margin-bottom:24px;border-bottom:2px solid #e2e8f0;display:flex;gap:0;">';
 		foreach ( $tabs as $tab_key => $tab_label ) {
-			$is_pro_tab = in_array( $tab_key, array( 'pricing', 'alerts', 'revenue', 'logs', 'rails' ), true );
+			$is_pro_tab = in_array( $tab_key, array( 'pricing', 'alerts', 'revenue', 'logs', 'rails', 'webhooks' ), true );
 			$classes = 'ct-tab';
 			if ( $tab_key === $tab ) {
 				$classes .= ' ct-tab-active';
@@ -303,6 +304,11 @@ class CrawlerToll_Admin {
 			case 'rails':
 				if ( $pro_active && $this->pro_admin ) {
 					$this->pro_admin->render_rails_tab();
+				}
+				break;
+			case 'webhooks':
+				if ( $pro_active && $this->pro_admin ) {
+					$this->pro_admin->render_webhooks_tab();
 				}
 				break;
 			default:

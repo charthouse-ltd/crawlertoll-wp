@@ -272,6 +272,103 @@ class CrawlerToll_Registry {
 	}
 
 	/**
+	 * Configure this site's unlock webhook (Pro; spec: unlock-webhooks-v1.md).
+	 * PUT /v1/webhooks/config with the site's registry write token. Pass
+	 * $url = null to delete the configuration (stops all deliveries).
+	 *
+	 * @param string|null $url    HTTPS endpoint, or null to delete.
+	 * @param string|null $secret Signing secret; null = keep existing (registry
+	 *                            generates one on first configuration and returns it once).
+	 * @return array|WP_Error Decoded registry response.
+	 */
+	public function save_webhook_config( $url, $secret = null ) {
+		$body = array(
+			'publisher' => wp_parse_url( home_url(), PHP_URL_HOST ),
+			'url'       => $url,
+		);
+		if ( null !== $secret ) {
+			$body['secret'] = (string) $secret;
+		}
+		$response = wp_remote_request(
+			self::base_url() . '/v1/webhooks/config',
+			array(
+				'method'  => 'PUT',
+				'body'    => wp_json_encode( $body ),
+				'headers' => array(
+					'Content-Type'  => 'application/json',
+					'Authorization' => 'Bearer ' . $this->get_registry_key(),
+				),
+				'timeout' => 15,
+			)
+		);
+		if ( is_wp_error( $response ) ) {
+			return $response;
+		}
+		$data = json_decode( wp_remote_retrieve_body( $response ), true );
+		if ( ! is_array( $data ) || empty( $data['status'] ) ) {
+			$err = is_array( $data ) && isset( $data['error'] ) ? (string) $data['error'] : 'unexpected_response';
+			return new WP_Error( 'crawlertoll_webhook_config', $err, array( 'status' => wp_remote_retrieve_response_code( $response ) ) );
+		}
+		return $data;
+	}
+
+	/**
+	 * Fire a webhook.test event through the real delivery pipeline (Pro).
+	 *
+	 * @return array|WP_Error The delivery row (status/attempts/last_code).
+	 */
+	public function test_webhook() {
+		$response = wp_remote_post(
+			self::base_url() . '/v1/webhooks/test',
+			array(
+				'body'    => wp_json_encode( array( 'publisher' => wp_parse_url( home_url(), PHP_URL_HOST ) ) ),
+				'headers' => array(
+					'Content-Type'  => 'application/json',
+					'Authorization' => 'Bearer ' . $this->get_registry_key(),
+				),
+				'timeout' => 20,
+			)
+		);
+		if ( is_wp_error( $response ) ) {
+			return $response;
+		}
+		$data = json_decode( wp_remote_retrieve_body( $response ), true );
+		if ( ! is_array( $data ) || ! isset( $data['delivery'] ) ) {
+			$err = is_array( $data ) && isset( $data['error'] ) ? (string) $data['error'] : 'unexpected_response';
+			return new WP_Error( 'crawlertoll_webhook_test', $err, array( 'status' => wp_remote_retrieve_response_code( $response ) ) );
+		}
+		return $data['delivery'];
+	}
+
+	/**
+	 * Recent webhook delivery attempts for this site (Pro deliveries view).
+	 *
+	 * @param int $limit Max rows (registry caps at 50).
+	 * @return array<int,array>|WP_Error
+	 */
+	public function webhook_deliveries( $limit = 10 ) {
+		$publisher = wp_parse_url( home_url(), PHP_URL_HOST );
+		$response  = wp_remote_get(
+			self::base_url() . '/v1/webhooks/deliveries?publisher=' . rawurlencode( $publisher ) . '&limit=' . (int) $limit,
+			array(
+				'headers' => array(
+					'Authorization' => 'Bearer ' . $this->get_registry_key(),
+				),
+				'timeout' => 15,
+			)
+		);
+		if ( is_wp_error( $response ) ) {
+			return $response;
+		}
+		$data = json_decode( wp_remote_retrieve_body( $response ), true );
+		if ( ! is_array( $data ) || ! array_key_exists( 'deliveries', $data ) ) {
+			$err = is_array( $data ) && isset( $data['error'] ) ? (string) $data['error'] : 'unexpected_response';
+			return new WP_Error( 'crawlertoll_webhook_deliveries', $err, array( 'status' => wp_remote_retrieve_response_code( $response ) ) );
+		}
+		return is_array( $data['deliveries'] ) ? $data['deliveries'] : array();
+	}
+
+	/**
 	 * Delist from the registry.
 	 *
 	 * @return array|WP_Error
