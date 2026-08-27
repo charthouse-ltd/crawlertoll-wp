@@ -523,7 +523,14 @@ class CrawlerToll_Plugin {
 			}
 			$m = isset( $row['price_micros'] ) ? max( 0, (int) $row['price_micros'] ) : 0;
 			$c = ( isset( $row['currency'] ) && in_array( strtoupper( (string) $row['currency'] ), $allowed_curr, true ) ) ? strtoupper( (string) $row['currency'] ) : $site_currency;
-			$rules[] = array( 'path' => $p, 'price_micros' => $m, 'currency' => $c );
+			$rule = array( 'path' => $p, 'price_micros' => $m, 'currency' => $c );
+			// Metered free articles (Pro): 0/absent = off; window defaults to 30 days.
+			$mcount = isset( $row['meter_count'] ) ? min( 50, max( 0, (int) $row['meter_count'] ) ) : 0;
+			if ( $mcount > 0 ) {
+				$rule['meter_count']  = $mcount;
+				$rule['meter_window'] = isset( $row['meter_window'] ) ? min( 365, max( 1, (int) $row['meter_window'] ) ) : 30;
+			}
+			$rules[] = $rule;
 		}
 
 		$settings['path_pricing'] = $rules;

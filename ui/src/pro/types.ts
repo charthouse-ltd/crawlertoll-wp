@@ -93,6 +93,10 @@ export interface PathRule {
   path: string;
   price_micros: number | string;
   currency: string;
+  // Metered free articles (Pro): N free reads per visitor per rolling window.
+  // Absent/0 = paywall from the first article.
+  meter_count?: number | string;
+  meter_window?: number | string;
 }
 
 export interface AlertSettings {

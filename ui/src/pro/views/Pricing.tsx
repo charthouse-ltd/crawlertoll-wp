@@ -16,21 +16,36 @@ const inputStyle: CSSProperties = {
 };
 
 /** A rule row keeps the price in CURRENCY UNITS for the UI (people think in
- *  cents, not micros) and converts to micros only on save. */
+ *  cents, not micros) and converts to micros only on save. Meter fields are
+ *  plain integers — "" means the meter is off for this section. */
 interface Row {
   path: string;
   amount: string; // e.g. "0.01"
+  freeArticles: string; // "" = off, "3" = 3 free reads per window
+  windowDays: string; // "" = 30
 }
 
 function toRow(r: PathRule, currency: string): Row {
   void currency;
-  return { path: r.path, amount: (Number(r.price_micros) / 1_000_000).toString() };
+  return {
+    path: r.path,
+    amount: (Number(r.price_micros) / 1_000_000).toString(),
+    freeArticles: r.meter_count ? String(Number(r.meter_count)) : "",
+    windowDays: r.meter_window ? String(Number(r.meter_window)) : "",
+  };
 }
 
 function toRule(r: Row, fallbackMicros: number, currency: string): PathRule {
   const parsed = parseFloat(r.amount);
   const micros = Number.isFinite(parsed) && parsed >= 0 ? Math.round(parsed * 1_000_000) : fallbackMicros;
-  return { path: r.path.trim(), price_micros: micros, currency };
+  const rule: PathRule = { path: r.path.trim(), price_micros: micros, currency };
+  const free = parseInt(r.freeArticles, 10);
+  if (Number.isFinite(free) && free > 0) {
+    rule.meter_count = Math.min(50, free);
+    const win = parseInt(r.windowDays, 10);
+    rule.meter_window = Number.isFinite(win) && win > 0 ? Math.min(365, win) : 30;
+  }
+  return rule;
 }
 
 /** Plain-language coverage hint under a path input. */
@@ -52,7 +67,7 @@ function PricingForm({ settings }: { settings: SettingsResponse }) {
   const update = (i: number, patch: Partial<Row>) => setRows((rs) => rs.map((r, j) => (j === i ? { ...r, ...patch } : r)));
   const remove = (i: number) => setRows((rs) => rs.filter((_, j) => j !== i));
   const add = () =>
-    setRows((rs) => [...rs, { path: "", amount: (settings.price_micros / 1_000_000).toString() }]);
+    setRows((rs) => [...rs, { path: "", amount: (settings.price_micros / 1_000_000).toString(), freeArticles: "", windowDays: "" }]);
 
   return (
     <Card>
@@ -78,7 +93,7 @@ function PricingForm({ settings }: { settings: SettingsResponse }) {
             className="rounded-xl border p-3"
             style={{ borderColor: "var(--ct-border)", background: "var(--ct-surface)" }}
           >
-            <div className="grid items-center gap-2 sm:grid-cols-[1fr_150px_36px]">
+            <div className="grid items-center gap-2 sm:grid-cols-[1fr_150px_130px_110px_36px]">
               <div>
                 <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide" style={{ color: "var(--ct-muted)" }}>
                   Section (path)
@@ -108,6 +123,36 @@ function PricingForm({ settings }: { settings: SettingsResponse }) {
                   />
                 </div>
               </div>
+              <div>
+                <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide" style={{ color: "var(--ct-muted)" }}>
+                  Free articles
+                </label>
+                <input
+                  style={inputStyle}
+                  type="number"
+                  min={0}
+                  max={50}
+                  step={1}
+                  placeholder="0"
+                  value={r.freeArticles}
+                  onChange={(e) => update(i, { freeArticles: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide" style={{ color: "var(--ct-muted)" }}>
+                  Every … days
+                </label>
+                <input
+                  style={inputStyle}
+                  type="number"
+                  min={1}
+                  max={365}
+                  step={1}
+                  placeholder="30"
+                  value={r.windowDays}
+                  onChange={(e) => update(i, { windowDays: e.target.value })}
+                />
+              </div>
               <button
                 type="button"
                 onClick={() => remove(i)}
@@ -121,6 +166,9 @@ function PricingForm({ settings }: { settings: SettingsResponse }) {
             </div>
             <p className="mt-2 text-[12px]" style={{ color: "var(--ct-muted)" }}>
               {coverageHint(r.path)}
+              {r.freeArticles && Number(r.freeArticles) > 0
+                ? ` Readers get ${Number(r.freeArticles)} free article${Number(r.freeArticles) === 1 ? "" : "s"} every ${Number(r.windowDays) || 30} days on this section — AI crawlers always pay.`
+                : ""}
             </p>
           </div>
         ))}

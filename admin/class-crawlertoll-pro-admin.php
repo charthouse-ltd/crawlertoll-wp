@@ -379,6 +379,8 @@ class CrawlerToll_Pro_Admin {
 			$paths  = ( isset( $_POST['ct_price_path'] ) && is_array( $_POST['ct_price_path'] ) ) ? wp_unslash( $_POST['ct_price_path'] ) : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- sanitised below.
 			$micros = ( isset( $_POST['ct_price_micros'] ) && is_array( $_POST['ct_price_micros'] ) ) ? wp_unslash( $_POST['ct_price_micros'] ) : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- cast below.
 			$currs  = ( isset( $_POST['ct_price_currency'] ) && is_array( $_POST['ct_price_currency'] ) ) ? wp_unslash( $_POST['ct_price_currency'] ) : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- whitelisted below.
+			$meters = ( isset( $_POST['ct_meter_count'] ) && is_array( $_POST['ct_meter_count'] ) ) ? wp_unslash( $_POST['ct_meter_count'] ) : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- cast below.
+			$mwin   = ( isset( $_POST['ct_meter_window'] ) && is_array( $_POST['ct_meter_window'] ) ) ? wp_unslash( $_POST['ct_meter_window'] ) : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- cast below.
 
 			$rules = array();
 			foreach ( $paths as $i => $p ) {
@@ -388,11 +390,18 @@ class CrawlerToll_Pro_Admin {
 				}
 				$m       = isset( $micros[ $i ] ) ? max( 0, (int) $micros[ $i ] ) : 0;
 				$c       = ( isset( $currs[ $i ] ) && in_array( strtoupper( $currs[ $i ] ), $allowed_curr, true ) ) ? strtoupper( $currs[ $i ] ) : $site_currency;
-				$rules[] = array(
+				$rule    = array(
 					'path'         => $p,
 					'price_micros' => $m,
 					'currency'     => $c,
 				);
+				// Metered free articles: 0/blank = off; window defaults to 30 days.
+				$mcount = isset( $meters[ $i ] ) ? min( 50, max( 0, (int) $meters[ $i ] ) ) : 0;
+				if ( $mcount > 0 ) {
+					$rule['meter_count']  = $mcount;
+					$rule['meter_window'] = isset( $mwin[ $i ] ) ? min( 365, max( 1, (int) $mwin[ $i ] ) ) : 30;
+				}
+				$rules[] = $rule;
 			}
 
 			$settings['path_pricing'] = $rules;

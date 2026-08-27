@@ -39,6 +39,7 @@ class CrawlerToll_Pricing {
 				'price_micros' => isset( $settings['price_micros'] ) ? (int) $settings['price_micros'] : 5000,
 				'currency'     => isset( $settings['currency'] ) ? $settings['currency'] : 'USD',
 				'matched_rule' => null,
+				'meter'        => null,
 			);
 		}
 
@@ -52,6 +53,7 @@ class CrawlerToll_Pricing {
 			if ( $pattern === '' ) {
 				continue;
 			}
+			$meter = self::meter_of_rule( $rule );
 			// Support wildcard matching: /premium/* matches /premium/report/
 			if ( substr( $pattern, -1 ) === '*' ) {
 				$prefix = rtrim( $pattern, '*' );
@@ -60,6 +62,7 @@ class CrawlerToll_Pricing {
 						'price_micros' => isset( $rule['price_micros'] ) ? (int) $rule['price_micros'] : 5000,
 						'currency'     => isset( $rule['currency'] ) ? $rule['currency'] : ( isset( $settings['currency'] ) ? $settings['currency'] : 'USD' ),
 						'matched_rule' => $pattern,
+						'meter'        => $meter,
 					);
 				}
 			}
@@ -69,6 +72,7 @@ class CrawlerToll_Pricing {
 					'price_micros' => isset( $rule['price_micros'] ) ? (int) $rule['price_micros'] : 5000,
 					'currency'     => isset( $rule['currency'] ) ? $rule['currency'] : ( isset( $settings['currency'] ) ? $settings['currency'] : 'USD' ),
 					'matched_rule' => $pattern,
+					'meter'        => $meter,
 				);
 			}
 		}
@@ -78,6 +82,29 @@ class CrawlerToll_Pricing {
 			'price_micros' => isset( $settings['price_micros'] ) ? (int) $settings['price_micros'] : 5000,
 			'currency'     => isset( $settings['currency'] ) ? $settings['currency'] : 'USD',
 			'matched_rule' => null,
+			'meter'        => null,
+		);
+	}
+
+	/**
+	 * Meter config from a path rule (metered free articles, Pro — spec:
+	 * docs/specs/metered-free-articles-v1.md). Null when the rule has no meter.
+	 * The free-safe runtime resolver used at seal time is CrawlerToll_Meter
+	 * (includes/class-crawlertoll-meter.php) — the sealing engine ships in the
+	 * free build and must not depend on this Pro-only class.
+	 *
+	 * @param array $rule Path-pricing rule.
+	 * @return array{count:int,window_days:int,path:string}|null
+	 */
+	public static function meter_of_rule( $rule ) {
+		$count = isset( $rule['meter_count'] ) ? (int) $rule['meter_count'] : 0;
+		if ( $count <= 0 ) {
+			return null;
+		}
+		return array(
+			'count'       => min( 50, $count ),
+			'window_days' => isset( $rule['meter_window'] ) && (int) $rule['meter_window'] > 0 ? min( 365, (int) $rule['meter_window'] ) : 30,
+			'path'        => isset( $rule['path'] ) ? (string) $rule['path'] : '/',
 		);
 	}
 

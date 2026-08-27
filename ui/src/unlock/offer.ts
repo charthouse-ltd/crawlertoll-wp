@@ -33,6 +33,15 @@ export interface SignedOffer {
   publisher?: string;
   x402?: X402Offer | null;
   passes?: OfferPass[];
+  // Metered free articles (Pro): UNSIGNED sibling of the signed offer — UI state
+  // only. Present when this human reader is on a metered path. remaining 0 means
+  // the allowance is used up (paid rails only).
+  meter?: {
+    token: unknown; // ct_meter_v1 — present verbatim to rail:"meter"
+    remaining: number;
+    count: number;
+    window_days: number;
+  };
 }
 
 export type RailKind = "stripe" | "x402" | "xwallet";

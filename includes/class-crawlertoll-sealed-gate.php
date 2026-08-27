@@ -97,6 +97,9 @@ class CrawlerToll_Sealed_Gate {
 		$hash   = hash( 'sha256', $plaintext );
 		$price  = isset( $settings['price_micros'] ) ? (int) $settings['price_micros'] : 5000;
 		$curr   = isset( $settings['currency'] ) ? (string) $settings['currency'] : 'USD';
+		// Metered free articles (Pro): per-path free allowance resolved from the
+		// post's permalink. Null for free tier / unmetered paths.
+		$meter  = CrawlerToll_Meter::resolve_for_post( $post_id, $settings );
 		$cached = get_post_meta( $post_id, self::META_KEY, true );
 		if ( is_array( $cached ) && isset( $cached['hash'], $cached['blob'] ) && $cached['hash'] === $hash ) {
 			// Reprice without re-sealing when the commercial terms changed (audit
@@ -104,11 +107,16 @@ class CrawlerToll_Sealed_Gate {
 			// Fail-soft: a sync hiccup keeps serving at the registered price.
 			$cached_price = isset( $cached['price_micros'] ) ? (int) $cached['price_micros'] : -1;
 			$cached_curr  = isset( $cached['currency'] ) ? (string) $cached['currency'] : '';
-			if ( $cached_price !== $price || $cached_curr !== $curr ) {
-				$res = ( new CrawlerToll_Registry() )->update_sealed_price( $cid, $price, $curr );
+			$cached_meter = isset( $cached['meter'] ) ? $cached['meter'] : null;
+			$meters_differ = wp_json_encode( $cached_meter ) !== wp_json_encode( $meter );
+			if ( $cached_price !== $price || $cached_curr !== $curr || $meters_differ ) {
+				$res = ( new CrawlerToll_Registry() )->update_sealed_price( $cid, $price, $curr, $meters_differ ? $meter : false );
 				if ( ! is_wp_error( $res ) ) {
 					$cached['price_micros'] = $price;
 					$cached['currency']     = $curr;
+					if ( $meters_differ ) {
+						$cached['meter'] = $meter;
+					}
 					update_post_meta( $post_id, self::META_KEY, $cached );
 				}
 			}
@@ -129,7 +137,8 @@ class CrawlerToll_Sealed_Gate {
 			$cek_b64,
 			$price,
 			$curr,
-			'full'
+			'full',
+			$meter
 		);
 		if ( is_wp_error( $result ) || empty( $result['status'] ) || 'registered' !== $result['status'] ) {
 			return false;
@@ -144,6 +153,7 @@ class CrawlerToll_Sealed_Gate {
 				'blob'          => $blob,
 				'price_micros'  => $price,
 				'currency'      => $curr,
+				'meter'         => $meter,
 				'registered_at' => current_time( 'mysql' ),
 			)
 		);

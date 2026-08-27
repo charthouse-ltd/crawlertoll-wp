@@ -43,6 +43,31 @@ export class UnlockError extends Error {
   }
 }
 
+// Metered free articles (Pro): the meter token is the reader's anonymous
+// free-allowance identity. One token per metered path; we keep them all in one
+// localStorage map and send the set with every offer fetch — the registry picks
+// the one valid for this site+path. Same storage-blocked degradation as the CEK
+// cache: private mode just means no free-allowance continuity.
+const METER_KEY = "ct:meter";
+function meterTokensRead(): Record<string, unknown> {
+  try {
+    const raw = window.localStorage?.getItem(METER_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+export function meterTokenStore(path: string, token: unknown): void {
+  try {
+    const all = meterTokensRead();
+    all[path] = token;
+    window.localStorage?.setItem(METER_KEY, JSON.stringify(all));
+  } catch {
+    /* storage blocked — no meter continuity, meter still works per-visit */
+  }
+}
+
 // A failed fetch (registry down, offline, DNS) throws a bare TypeError — map it
 // to a human message instead of the generic "Something went wrong."
 async function safeFetch(url: string, init?: RequestInit): Promise<Response> {
@@ -55,10 +80,11 @@ async function safeFetch(url: string, init?: RequestInit): Promise<Response> {
 
 /** Step A: POST with no proof → the signed 402 offer (authoritative rail set). */
 export async function fetchOffer(contentId: string): Promise<SignedOffer> {
+  const tokens = Object.values(meterTokensRead());
   const res = await safeFetch(keyUrl(contentId), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: "{}",
+    body: tokens.length > 0 ? JSON.stringify({ meter_tokens: tokens }) : "{}",
   });
   if (res.status === 402) {
     return (await res.json()) as SignedOffer;
@@ -118,4 +144,9 @@ export function redeemStripe(contentId: string, passId: string, intentId: string
  *  accepts both, keyed on the payload's x402Version. */
 export function redeemX402(contentId: string, xPayment: string, version: 1 | 2 = 1): Promise<KeyResponse> {
   return postKey(contentId, {}, { [version === 2 ? "PAYMENT-SIGNATURE" : "X-PAYMENT"]: xPayment });
+}
+
+/** Meter: redeem a free read against the reader's meter token (no payment). */
+export function redeemMeter(contentId: string, meterToken: unknown): Promise<KeyResponse> {
+  return postKey(contentId, { rail: "meter", meter_token: meterToken });
 }

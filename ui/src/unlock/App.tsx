@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { fetchOffer, hasStripeKey, hasWallet, UnlockError } from "./api";
+import { fetchOffer, hasStripeKey, hasWallet, meterTokenStore, redeemMeter, UnlockError } from "./api";
 import { offerToRails, type RailTile, type SignedOffer } from "./offer";
 import { payX402, startStripe } from "./payments";
 import { sanitizeBody } from "./sanitize";
@@ -130,8 +130,16 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
     setState("loading");
     try {
       const o = await fetchOffer(contentId);
+      // Metered free articles: persist the (possibly re-minted) token so the next
+      // visit — here or on another article of this section — keeps the allowance.
+      if (o.meter && o.meter.token) {
+        const path = typeof (o.meter.token as { path?: unknown }).path === "string"
+          ? (o.meter.token as { path: string }).path
+          : "/";
+        meterTokenStore(path, o.meter.token);
+      }
       const t = offerToRails(o, { hasStripeKey: hasStripeKey(), hasWallet: hasWallet() });
-      if (t.length === 0) {
+      if (t.length === 0 && !(o.meter && o.meter.remaining > 0)) {
         setState("unavailable");
         return;
       }
@@ -139,6 +147,26 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
       setTiles(t);
       setState("menu");
     } catch (e) {
+      fail(e);
+    }
+  };
+
+  // Metered free read: redeem the allowance instead of paying. A rejected grant
+  // (exhausted in another tab, expired token) re-fetches the offer — the menu
+  // then shows the paid rails with remaining 0.
+  const readFree = async () => {
+    if (!offer?.meter) {
+      return;
+    }
+    setState("processing");
+    try {
+      const { cek } = await redeemMeter(contentId, offer.meter.token);
+      await reveal(cek);
+    } catch (e) {
+      if (e instanceof UnlockError && (e.code === "unsettled" || e.code.startsWith("key_"))) {
+        await loadMenu();
+        return;
+      }
       fail(e);
     }
   };
@@ -287,6 +315,19 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
         <>
           <p style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>Choose how to unlock</p>
           <div style={{ display: "grid", gap: 8 }}>
+            {offer?.meter && offer.meter.remaining > 0 ? (
+              <button type="button" onClick={readFree} style={{ ...tileBtn, border: "1px solid var(--ct-accent)" }}>
+                <span style={{ fontWeight: 600 }}>Read free now</span>
+                <span style={{ color: "var(--ct-muted)" }}>
+                  {offer.meter.remaining - 1} of {offer.meter.count} free articles left after this one
+                </span>
+              </button>
+            ) : null}
+            {offer?.meter && offer.meter.remaining <= 0 ? (
+              <p style={{ fontSize: 12, color: "var(--ct-muted)", margin: "0 0 4px" }}>
+                You've read your {offer.meter.count} free article{offer.meter.count === 1 ? "" : "s"} for this {offer.meter.window_days}-day window — unlock to keep reading.
+              </p>
+            ) : null}
             {tiles.map((t) => (
               <button
                 key={t.key}

@@ -127,8 +127,8 @@ class CrawlerToll_Registry {
 	 * @param string $scope
 	 * @return array|WP_Error Decoded JSON, or WP_Error on transport failure.
 	 */
-	public function register_sealed( $content_id, $cek_b64, $price_micros, $currency = 'USDC', $scope = 'full' ) {
-		$response = $this->post_sealed_register( $content_id, $cek_b64, $price_micros, $currency, $scope );
+	public function register_sealed( $content_id, $cek_b64, $price_micros, $currency = 'USDC', $scope = 'full', $meter = null ) {
+		$response = $this->post_sealed_register( $content_id, $cek_b64, $price_micros, $currency, $scope, $meter );
 		if ( is_wp_error( $response ) ) {
 			return $response;
 		}
@@ -144,7 +144,7 @@ class CrawlerToll_Registry {
 			&& in_array( $data['error'], array( 'publisher_not_enrolled', 'invalid_token', 'missing_bearer_token' ), true ) ) {
 			$enroll = $this->register_with_registry();
 			if ( ! is_wp_error( $enroll ) && is_array( $enroll ) && isset( $enroll['status'] ) && 'registered' === $enroll['status'] ) {
-				$response = $this->post_sealed_register( $content_id, $cek_b64, $price_micros, $currency, $scope );
+				$response = $this->post_sealed_register( $content_id, $cek_b64, $price_micros, $currency, $scope, $meter );
 				if ( is_wp_error( $response ) ) {
 					return $response;
 				}
@@ -159,7 +159,7 @@ class CrawlerToll_Registry {
 	 *
 	 * @return array|WP_Error Raw HTTP response, or WP_Error on transport failure.
 	 */
-	private function post_sealed_register( $content_id, $cek_b64, $price_micros, $currency, $scope ) {
+	private function post_sealed_register( $content_id, $cek_b64, $price_micros, $currency, $scope, $meter = null ) {
 		$settings = wp_parse_args( (array) get_option( CRAWLERTOLL_OPTION_KEY ), crawlertoll_default_settings() );
 		$body     = array(
 			'content_id'   => $content_id,
@@ -169,6 +169,14 @@ class CrawlerToll_Registry {
 			'scope'        => $scope,
 			'publisher'    => wp_parse_url( home_url(), PHP_URL_HOST ),
 		);
+		// Metered free articles (Pro): per-path free-allowance meta for humans.
+		if ( is_array( $meter ) && ! empty( $meter['count'] ) ) {
+			$body['meter'] = array(
+				'count'       => (int) $meter['count'],
+				'window_days' => isset( $meter['window_days'] ) ? (int) $meter['window_days'] : 30,
+				'path'        => isset( $meter['path'] ) ? (string) $meter['path'] : '/',
+			);
+		}
 		// R1.x-a: the publisher's USDC payout address. Without it the registry
 		// advertises x402 with no payee and (in production) fails closed — paid
 		// content must always declare where the money goes.
@@ -233,18 +241,29 @@ class CrawlerToll_Registry {
 	 * existing buyers' cached keys keep working. Fail-soft: WP_Error means the
 	 * caller keeps serving at the previously registered price.
 	 *
-	 * @param string $content_id
-	 * @param int    $price_micros
-	 * @param string $currency
+	 * @param string           $content_id
+	 * @param int              $price_micros
+	 * @param string           $currency
+	 * @param array|null|false $meter Metered-free-articles meta: array sets it,
+	 *                                null disables it, false (default) leaves it untouched.
 	 * @return array|WP_Error
 	 */
-	public function update_sealed_price( $content_id, $price_micros, $currency ) {
+	public function update_sealed_price( $content_id, $price_micros, $currency, $meter = false ) {
 		$settings = wp_parse_args( (array) get_option( CRAWLERTOLL_OPTION_KEY ), crawlertoll_default_settings() );
 		$body     = array(
 			'publisher'    => wp_parse_url( home_url(), PHP_URL_HOST ),
 			'price_micros' => (int) $price_micros,
 			'currency'     => (string) $currency,
 		);
+		if ( false !== $meter ) {
+			$body['meter'] = is_array( $meter ) && ! empty( $meter['count'] )
+				? array(
+					'count'       => (int) $meter['count'],
+					'window_days' => isset( $meter['window_days'] ) ? (int) $meter['window_days'] : 30,
+					'path'        => isset( $meter['path'] ) ? (string) $meter['path'] : '/',
+				)
+				: null; // Explicit disable — the registry deletes the meter meta.
+		}
 		if ( ! empty( $settings['x402_pay_to'] ) && preg_match( '/^0x[0-9a-fA-F]{40}$/', (string) $settings['x402_pay_to'] ) ) {
 			$body['x402_pay_to'] = (string) $settings['x402_pay_to'];
 		}
