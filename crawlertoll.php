@@ -131,6 +131,10 @@ function crawlertoll_bootstrap() {
 	// Registered unconditionally: sealing is a FREE feature.
 	( new CrawlerToll_Premium_Gate() )->register();
 
+	// Visual cut bar (access-tiers spec §5.2): cut meta + editor surfaces.
+	// Free-safe — publishers on the free tier set their cut too.
+	CrawlerToll_Cut::register_hooks();
+
 	// Pro features — registered ONLY for an active license (Freemius-backed).
 	// is_pro_active() is false on free installs, so the alert + catalogue crons
 	// (and the external calls they schedule) never run without Pro.

@@ -141,8 +141,9 @@ class CrawlerToll_Premium_Gate {
 			return;
 		}
 		// Memoize the split from the ORIGINAL bytes before blanking anything.
+		// split_for_post honors the explicit visual cut meta (access-tiers §5.2).
 		if ( ! isset( $this->parts[ $id ] ) ) {
-			$this->parts[ $id ] = CrawlerToll_Cut::split( (string) $post->post_content );
+			$this->parts[ $id ] = CrawlerToll_Cut::split_for_post( $id, (string) $post->post_content );
 		}
 		// Mutate ONLY this request-local loop/query instance (NOT the get_post()
 		// cache via wp_cache_set — that would persist the preview into a Redis/
@@ -179,7 +180,7 @@ class CrawlerToll_Premium_Gate {
 	private function parts( $post_id ) {
 		$post_id = (int) $post_id;
 		if ( ! isset( $this->parts[ $post_id ] ) ) {
-			$this->parts[ $post_id ] = CrawlerToll_Cut::split( (string) get_post_field( 'post_content', $post_id ) );
+			$this->parts[ $post_id ] = CrawlerToll_Cut::split_for_post( $post_id, (string) get_post_field( 'post_content', $post_id ) );
 		}
 		return $this->parts[ $post_id ];
 	}
@@ -481,6 +482,36 @@ class CrawlerToll_Premium_Gate {
 				'before'
 			);
 		}
+	}
+
+	/**
+	 * Admin "Wall preview" (access-tiers spec §5.2): render what a READER sees —
+	 * preview + lock markup — for a premium post, WITHOUT the admin's editor
+	 * privileges getting in the way and WITHOUT sealing/registering as a side
+	 * effect (no blob embed; the interactive unlock app only loads on the real
+	 * frontend page). Admin-only callers (the Wall preview tab).
+	 *
+	 * @param int $post_id
+	 * @return string HTML (preview + static lock markup).
+	 */
+	public function wall_preview_html( $post_id ) {
+		$post_id = (int) $post_id;
+		if ( $post_id <= 0 || ! CrawlerToll_Cut::is_premium( $post_id ) ) {
+			return '';
+		}
+		$settings = crawlertoll_get_settings();
+		$host     = wp_parse_url( home_url(), PHP_URL_HOST );
+		$cid      = CrawlerToll_Sealed_Gate::build_content_id( $host, $post_id );
+
+		$html  = $this->preview_html( $post_id );
+		$html .= '<div class="' . esc_attr( self::MARKER_CLASS ) . ' crawlertoll-locked"';
+		$html .= ' data-content-id="' . esc_attr( $cid ) . '"';
+		$html .= ' data-price-micros="' . esc_attr( (string) (int) $settings['price_micros'] ) . '"';
+		$html .= ' data-currency="' . esc_attr( $settings['currency'] ) . '"';
+		$html .= ' data-rail="' . esc_attr( $settings['rail'] ) . '">';
+		$html .= '<p>' . esc_html__( 'The rest of this content is available with a one-time unlock.', 'crawlertoll' ) . '</p>';
+		$html .= '</div>';
+		return $html;
 	}
 
 	// ─── seal-on-serve (fail-closed) ──────────────────────────────────

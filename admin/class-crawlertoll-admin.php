@@ -237,6 +237,7 @@ class CrawlerToll_Admin {
 			'logs'      => __( 'Logs', 'crawlertoll' ),
 			'rails'     => __( 'Rails', 'crawlertoll' ),
 			'webhooks'  => __( 'Webhooks', 'crawlertoll' ),
+			'preview'   => __( 'Wall preview', 'crawlertoll' ),
 		);
 
 		// If Pro isn't active, redirect Pro tabs to settings with a notice.
@@ -311,12 +312,82 @@ class CrawlerToll_Admin {
 					$this->pro_admin->render_webhooks_tab();
 				}
 				break;
+			case 'preview':
+				$this->render_preview_tab();
+				break;
 			default:
 				$this->render_settings_tab();
 				break;
 		}
 
 		echo '</div>'; // .wrap
+	}
+
+	/**
+	 * Wall preview tab (access-tiers spec §5.2): pick a premium post and see the
+	 * reader-facing wall — the free preview exactly as the cut defines it, plus
+	 * the lock region. Free feature (the cut itself is free). Side-effect-free:
+	 * never seals or registers from the admin.
+	 *
+	 * @return void
+	 */
+	private function render_preview_tab() {
+		$premium_posts = get_posts(
+			array(
+				'post_type'      => 'post',
+				'post_status'    => array( 'publish', 'draft', 'private' ),
+				'posts_per_page' => 50,
+				'meta_key'       => CrawlerToll_Cut::META_KEY, // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key -- bounded admin lookup, 50 rows max.
+				'meta_value'     => '1', // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_value
+				'orderby'        => 'modified',
+				'order'          => 'DESC',
+			)
+		);
+
+		echo '<h2>' . esc_html__( 'Wall preview', 'crawlertoll' ) . '</h2>';
+
+		if ( empty( $premium_posts ) ) {
+			echo '<p>' . esc_html__( 'No premium posts yet. Mark a post as premium in the editor (CrawlerToll panel), then come back to see its paywall.', 'crawlertoll' ) . '</p>';
+			return;
+		}
+
+		$selected = isset( $_GET['ct_preview_post'] ) ? absint( $_GET['ct_preview_post'] ) : (int) $premium_posts[0]->ID; // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- read-only preview selector.
+
+		echo '<form method="get" style="margin:0 0 16px;">';
+		echo '<input type="hidden" name="page" value="crawlertoll" />';
+		echo '<input type="hidden" name="ct_tab" value="preview" />';
+		echo '<label for="ct_preview_post" style="font-weight:600;margin-right:8px;">' . esc_html__( 'Premium post:', 'crawlertoll' ) . '</label>';
+		echo '<select name="ct_preview_post" id="ct_preview_post" onchange="this.form.submit()">';
+		foreach ( $premium_posts as $p ) {
+			echo '<option value="' . esc_attr( (string) $p->ID ) . '"' . selected( $selected, $p->ID, false ) . '>' . esc_html( get_the_title( $p ) ) . '</option>';
+		}
+		echo '</select>';
+		echo '</form>';
+
+		$gate = new CrawlerToll_Premium_Gate();
+		$html = $gate->wall_preview_html( $selected );
+		if ( '' === $html ) {
+			echo '<p>' . esc_html__( 'That post is not premium.', 'crawlertoll' ) . '</p>';
+			return;
+		}
+
+		$cut = (int) get_post_meta( $selected, CrawlerToll_Cut::CUT_META, true );
+		echo '<p style="color:#64748b;font-size:13px;">';
+		if ( $cut > 0 ) {
+			/* translators: %d: block/paragraph index after which the seal begins. */
+			printf( esc_html__( 'Cut: manual — after block/paragraph #%d (set in the editor). This is what readers see:', 'crawlertoll' ), $cut );
+		} else {
+			esc_html_e( 'Cut: automatic (first block/paragraph, or a <!--more--> marker). This is what readers see:', 'crawlertoll' );
+		}
+		echo '</p>';
+
+		// The publisher's own content rendered back to the publisher (manage_options
+		// screen, their own post). Kses would strip the lock div's data attributes,
+		// so this renders raw by design — same trust level as the post editor.
+		echo '<div style="border:1px solid #e2e8f0;border-radius:10px;padding:20px;max-width:720px;background:#fff;">';
+		echo $html; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- see note above.
+		echo '</div>';
+		echo '<p style="color:#64748b;font-size:12px;margin-top:8px;">' . esc_html__( 'On the live page, the lock region mounts the interactive unlock app (payment + free reads). This preview is the static frame.', 'crawlertoll' ) . '</p>';
 	}
 
 	/**

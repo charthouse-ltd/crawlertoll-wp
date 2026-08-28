@@ -52,6 +52,77 @@ class CrawlerToll_Cut {
 	const META_KEY = '_crawlertoll_premium';
 
 	/**
+	 * Explicit paywall-cut post meta (access-tiers spec §5.2, 2026-08-28): the
+	 * block (or classic-paragraph) index AFTER WHICH the seal begins. 0/absent =
+	 * automatic cut (the <!--more-->/block-aware logic in split()). The position
+	 * is observable anyway (the preview is public), so it shares META_KEY's
+	 * show_in_rest posture; writes require edit_post via register_post_meta.
+	 */
+	const CUT_META = '_crawlertoll_cut';
+
+	/**
+	 * Split for a specific post: an explicit visual cut (CUT_META, set by the
+	 * editor cut bar or the classic metabox) wins over the automatic split.
+	 * Falls back to split() on absent/out-of-range/unresolvable meta — never
+	 * fails open toward MORE preview than the meta implies.
+	 *
+	 * @param int    $post_id
+	 * @param string $raw_content Raw post_content bytes.
+	 * @return array{preview:string,marker:string,body:string,cut:int,mode:string,has_body:bool}
+	 */
+	public static function split_for_post( $post_id, $raw_content ) {
+		$n = (int) get_post_meta( (int) $post_id, self::CUT_META, true );
+		if ( $n > 0 ) {
+			$raw  = is_scalar( $raw_content ) ? (string) $raw_content : '';
+			$meta = self::split_at_index( $raw, $n );
+			if ( null !== $meta ) {
+				return $meta;
+			}
+		}
+		return self::split( $raw_content );
+	}
+
+	/**
+	 * Cut after the Nth top-level unit (Gutenberg block, or classic paragraph).
+	 * Pure — unit-testable. Returns null when the index can't be resolved
+	 * (caller falls back to the automatic split). N = unit count means
+	 * "everything free" (has_body=false; the caller refuses to seal/charge and
+	 * the editor UI warns). The paragraph path retreats to a clean boundary —
+	 * only ever shrinking the preview, the leak-safe direction.
+	 *
+	 * @param string $raw
+	 * @param int    $n 1-based unit index to cut AFTER.
+	 * @return array|null
+	 */
+	public static function split_at_index( $raw, $n ) {
+		$raw = is_scalar( $raw ) ? (string) $raw : '';
+		$n   = (int) $n;
+		if ( $n < 1 || '' === $raw ) {
+			return null;
+		}
+		$is_blocks = (bool) preg_match( '/<!--\s*wp:/', $raw );
+		$bounds    = $is_blocks ? self::block_boundaries( $raw ) : self::paragraph_boundaries( $raw );
+		if ( empty( $bounds ) ) {
+			return null;
+		}
+		if ( $n > count( $bounds ) ) {
+			return null; // out of range — auto fallback
+		}
+		$off = $bounds[ $n - 1 ];
+		if ( ! $is_blocks ) {
+			$off = self::retreat_to_clean( $raw, $off );
+		}
+		$len = strlen( $raw );
+		if ( $off >= $len ) {
+			return self::result( $raw, '', '', 'meta' ); // all free — caller refuses to seal
+		}
+		if ( $off <= 0 ) {
+			return self::result( '', '', $raw, 'meta' ); // seal everything — leak-safe
+		}
+		return self::result( (string) substr( $raw, 0, $off ), '', (string) substr( $raw, $off ), 'meta' );
+	}
+
+	/**
 	 * Split raw post content into preview + marker + sealable body.
 	 *
 	 * @param string $raw_content Raw post_content bytes (get_post_field('post_content')).
@@ -133,6 +204,128 @@ class CrawlerToll_Cut {
 	 */
 	public static function is_premium( $post_id ) {
 		return (bool) get_post_meta( (int) $post_id, self::META_KEY, true );
+	}
+
+	// ─── visual cut bar: WP wiring (access-tiers spec §5.2, 2026-08-28) ──
+
+	/**
+	 * Register the cut meta + the two editor surfaces (Gutenberg sidebar panel,
+	 * classic metabox). Free-safe: depends on WP core only. Called from the
+	 * plugin bootstrap.
+	 *
+	 * @return void
+	 */
+	public static function register_hooks() {
+		add_action( 'init', array( __CLASS__, 'register_meta' ) );
+		add_action( 'enqueue_block_editor_assets', array( __CLASS__, 'enqueue_editor_panel' ) );
+		add_action( 'add_meta_boxes', array( __CLASS__, 'add_classic_metabox' ) );
+		add_action( 'save_post', array( __CLASS__, 'save_classic_metabox' ), 10, 1 );
+	}
+
+	/**
+	 * Expose the cut to the block editor (REST). Writes require edit_post;
+	 * reads are public by the same observability argument as META_KEY.
+	 *
+	 * @return void
+	 */
+	public static function register_meta() {
+		register_post_meta(
+			'post',
+			self::CUT_META,
+			array(
+				'type'              => 'integer',
+				'single'            => true,
+				'default'           => 0,
+				'sanitize_callback' => 'absint',
+				'show_in_rest'      => true,
+				'auth_callback'     => function ( $allowed, $meta_key, $post_id ) {
+					return current_user_can( 'edit_post', (int) $post_id );
+				},
+			)
+		);
+	}
+
+	/**
+	 * Gutenberg: enqueue the cut-bar sidebar panel when editing a post.
+	 * Plain-JS asset on core externals (wp.*), no build step — the panel runs
+	 * INSIDE Gutenberg's React 18 tree, so it must not pull our bundled
+	 * React 19 in (hook-dispatcher mismatch). Visible in the panel only for
+	 * premium posts (client-side check on the premium meta).
+	 *
+	 * @return void
+	 */
+	public static function enqueue_editor_panel() {
+		$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
+		if ( $screen && isset( $screen->post_type ) && 'post' !== $screen->post_type ) {
+			return;
+		}
+		$asset = CRAWLERTOLL_PLUGIN_DIR . 'assets/js/editor-panel.js';
+		if ( ! file_exists( $asset ) ) {
+			return;
+		}
+		wp_enqueue_script(
+			'crawlertoll-editor-panel',
+			plugins_url( 'assets/js/editor-panel.js', CRAWLERTOLL_PLUGIN_DIR . 'crawlertoll.php' ),
+			array( 'wp-plugins', 'wp-edit-post', 'wp-data', 'wp-element', 'wp-components', 'wp-i18n' ),
+			(string) filemtime( $asset ),
+			true
+		);
+	}
+
+	/**
+	 * Classic editor fallback: a numeric "seal after paragraph N" box on the
+	 * post screen (only renders its input for premium posts; the panel checks
+	 * live in JS for Gutenberg, here we check the stored meta).
+	 *
+	 * @return void
+	 */
+	public static function add_classic_metabox() {
+		add_meta_box(
+			'crawlertoll-cut',
+			__( 'CrawlerToll — Paywall cut', 'crawlertoll' ),
+			array( __CLASS__, 'render_classic_metabox' ),
+			'post',
+			'side',
+			'default'
+		);
+	}
+
+	/**
+	 * Render the classic metabox.
+	 *
+	 * @param WP_Post $post
+	 * @return void
+	 */
+	public static function render_classic_metabox( $post ) {
+		wp_nonce_field( 'crawlertoll_cut_save', 'crawlertoll_cut_nonce' );
+		$cut = (int) get_post_meta( $post->ID, self::CUT_META, true );
+		if ( ! self::is_premium( $post->ID ) ) {
+			echo '<p class="description">' . esc_html__( 'Mark this post as premium (CrawlerToll meta) to set where the free preview ends.', 'crawlertoll' ) . '</p>';
+			return;
+		}
+		echo '<p><label for="crawlertoll_cut"><strong>' . esc_html__( 'Seal after paragraph #', 'crawlertoll' ) . '</strong></label></p>';
+		echo '<input type="number" min="0" max="999" id="crawlertoll_cut" name="crawlertoll_cut" value="' . esc_attr( (string) $cut ) . '" class="small-text" />';
+		echo '<p class="description">' . esc_html__( 'Everything above the cut is the free preview; everything below is sealed. 0 = automatic (after the first block/paragraph, or at a <!--more--> marker).', 'crawlertoll' ) . '</p>';
+	}
+
+	/**
+	 * Persist the classic metabox value.
+	 *
+	 * @param int $post_id
+	 * @return void
+	 */
+	public static function save_classic_metabox( $post_id ) {
+		if ( ! isset( $_POST['crawlertoll_cut_nonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['crawlertoll_cut_nonce'] ) ), 'crawlertoll_cut_save' ) ) {
+			return;
+		}
+		if ( ! current_user_can( 'edit_post', (int) $post_id ) ) {
+			return;
+		}
+		if ( defined( 'DOING_AUTOSAVE' ) && DOING_AUTOSAVE ) {
+			return;
+		}
+		$cut = isset( $_POST['crawlertoll_cut'] ) ? absint( $_POST['crawlertoll_cut'] ) : 0;
+		update_post_meta( (int) $post_id, self::CUT_META, $cut );
 	}
 
 	// ─── internals (pure) ────────────────────────────────────────────
@@ -260,6 +453,79 @@ class CrawlerToll_Cut {
 			$cursor = $end > $cursor ? $end : $cursor + 1;
 		}
 		return null;
+	}
+
+	/**
+	 * Byte offsets just past the close of EVERY complete top-level Gutenberg
+	 * block (the generalization of first_block_end for the visual cut bar).
+	 * Same incremental scan discipline — one delimiter in memory at a time.
+	 *
+	 * @param string $s
+	 * @return int[] Ascending offsets, one per top-level block.
+	 */
+	private static function block_boundaries( $s ) {
+		$bounds  = array();
+		$len     = strlen( $s );
+		$cursor  = 0;
+		$depth   = 0;
+		$guard   = 0;
+		while ( $cursor < $len && $guard++ < 200000 ) {
+			if ( ! preg_match( '/<!--\s*\/?wp:.*?-->/s', $s, $m, PREG_OFFSET_CAPTURE, $cursor ) ) {
+				break;
+			}
+			$tag    = $m[0][0];
+			$pos    = (int) $m[0][1];
+			$end    = $pos + strlen( $tag );
+			$cursor = $end > $cursor ? $end : $cursor + 1;
+
+			$is_close = (bool) preg_match( '#^<!--\s*/wp:#', $tag );
+			$is_self  = ! $is_close && (bool) preg_match( '#/\s*-->$#', $tag );
+
+			if ( $is_close ) {
+				if ( $depth > 0 ) {
+					$depth--;
+					if ( 0 === $depth ) {
+						$bounds[] = $end;
+					}
+				}
+			} elseif ( $is_self ) {
+				if ( 0 === $depth ) {
+					$bounds[] = $end;
+				}
+			} else {
+				$depth++;
+			}
+		}
+		return $bounds;
+	}
+
+	/**
+	 * Byte offsets just past EVERY paragraph boundary (explicit </p> or blank
+	 * line) whose preview-so-far is non-empty — the classic-content unit list
+	 * for the visual cut bar. Same "skip boundaries before the first
+	 * non-whitespace byte" rule as first_paragraph_end.
+	 *
+	 * @param string $s
+	 * @return int[] Ascending offsets.
+	 */
+	private static function paragraph_boundaries( $s ) {
+		$bounds       = array();
+		$first_non_ws = preg_match( '/\S/', $s, $w, PREG_OFFSET_CAPTURE ) ? (int) $w[0][1] : strlen( $s );
+		$len          = strlen( $s );
+		$cursor       = 0;
+		$guard        = 0;
+		while ( $cursor <= $len && $guard++ < 200000 ) {
+			if ( ! preg_match( '#</p\s*>|\R\R#i', $s, $m, PREG_OFFSET_CAPTURE, $cursor ) ) {
+				break;
+			}
+			$pos    = (int) $m[0][1];
+			$end    = $pos + strlen( $m[0][0] );
+			$cursor = $end > $cursor ? $end : $cursor + 1;
+			if ( $pos > $first_non_ws ) {
+				$bounds[] = $end;
+			}
+		}
+		return $bounds;
 	}
 
 	/**

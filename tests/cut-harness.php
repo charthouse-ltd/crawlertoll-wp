@@ -196,6 +196,72 @@ $r       = inv( $loadish, 'comment-flood after a paragraph boundary' );
 $dt      = microtime( true ) - $t0;
 check( preview_token_clean( $r['preview'] ) && $dt < 2.0, sprintf( 'comment-flood: clean preview boundary, fast (%.3fs)', $dt ) );
 
+// #11: safe-forward/retreat always terminates on a clean boundary under load.
+$loadish = '<p>intro</p>' . "\n\n" . str_repeat( '<!--x-->', 50000 ) . 'tail';
+$t0      = microtime( true );
+$r       = inv( $loadish, 'comment-flood after a paragraph boundary' );
+$dt      = microtime( true ) - $t0;
+check( preview_token_clean( $r['preview'] ) && $dt < 2.0, sprintf( 'comment-flood: clean preview boundary, fast (%.3fs)', $dt ) );
+
+// ─── Visual cut bar: explicit cut after unit N (access-tiers spec §5.2) ───
+function inv_meta( $raw, $n, $label ) {
+	$r = CrawlerToll_Cut::split_at_index( $raw, $n );
+	if ( null !== $r ) {
+		check( $r['preview'] . $r['marker'] . $r['body'] === $raw, "INVARIANT (meta cut): $label" );
+	}
+	return $r;
+}
+
+$blocks = "<!-- wp:paragraph -->\n<p>One.</p>\n<!-- /wp:paragraph -->\n<!-- wp:paragraph -->\n<p>Two.</p>\n<!-- /wp:paragraph -->\n<!-- wp:paragraph -->\n<p>Three.</p>\n<!-- /wp:paragraph -->";
+
+$r = inv_meta( $blocks, 2, 'blocks: cut after block 2' );
+check( null !== $r && 'meta' === $r['mode'], 'blocks: meta mode reported' );
+check( null !== $r && strpos( $r['preview'], 'Two.' ) !== false && strpos( $r['preview'], 'Three.' ) === false, 'blocks: preview holds blocks 1-2 only' );
+check( null !== $r && strpos( $r['body'], 'Three.' ) !== false, 'blocks: body holds block 3' );
+
+$r = inv_meta( $blocks, 1, 'blocks: cut after block 1' );
+check( null !== $r && strpos( $r['preview'], 'One.' ) !== false && strpos( $r['preview'], 'Two.' ) === false, 'blocks: preview holds block 1 only' );
+
+$r = inv_meta( $blocks, 3, 'blocks: cut after LAST block = all free' );
+check( null !== $r && false === $r['has_body'], 'blocks: N = block count yields has_body=false (nothing to seal)' );
+
+$r = CrawlerToll_Cut::split_at_index( $blocks, 4 );
+check( null === $r, 'blocks: out-of-range index returns null (auto fallback)' );
+check( null === CrawlerToll_Cut::split_at_index( $blocks, 0 ), 'blocks: 0 returns null (auto)' );
+check( null === CrawlerToll_Cut::split_at_index( '', 1 ), 'blocks: empty content returns null' );
+
+// Nested blocks: a list INSIDE a section must not split the outline.
+$nested = "<!-- wp:group -->\n<!-- wp:paragraph -->\n<p>Inner A.</p>\n<!-- /wp:paragraph -->\n<!-- wp:paragraph -->\n<p>Inner B.</p>\n<!-- /wp:paragraph -->\n<!-- /wp:group -->\n<!-- wp:paragraph -->\n<p>Outer.</p>\n<!-- /wp:paragraph -->";
+$r      = inv_meta( $nested, 1, 'nested: cut after top-level block 1 (the whole group)' );
+check( null !== $r && strpos( $r['preview'], 'Inner B.' ) !== false && strpos( $r['preview'], 'Outer.' ) === false, 'nested: block 1 = full group, not an inner block' );
+
+// Classic (no block markup): cut after paragraph N, retreat-to-clean applies.
+$classic = "<p>Para one.</p>\n\n<p>Para two with <a href=\"https://x.test\">a link</a>.</p>\n\n<p>Para three.</p>";
+$r       = inv_meta( $classic, 1, 'classic: cut after paragraph 1' );
+check( null !== $r && strpos( $r['preview'], 'Para one.' ) !== false && strpos( $r['preview'], 'Para two' ) === false, 'classic: preview holds paragraph 1 only' );
+check( null !== $r && preview_token_clean( $r['preview'] ), 'classic: preview boundary is token-clean' );
+
+$classic2 = "<p>Only.</p>"; // single unit
+$r        = inv_meta( $classic2, 1, 'classic: cut after the only paragraph' );
+check( null !== $r && false === $r['has_body'], 'classic: single unit at N=1 → all free' );
+
+// split_for_post: meta wiring (stub get_post_meta).
+$GLOBALS['ct_test_meta'] = array( 42 => 2, 43 => 99, 44 => 0 );
+function get_post_meta( $id, $k, $single = false ) {
+	return isset( $GLOBALS['ct_test_meta'][ $id ] ) ? $GLOBALS['ct_test_meta'][ $id ] : '';
+}
+$r = CrawlerToll_Cut::split_for_post( 42, $blocks );
+check( 'meta' === $r['mode'] && strpos( $r['preview'], 'Two.' ) !== false, 'split_for_post: meta cut wins' );
+$r = CrawlerToll_Cut::split_for_post( 43, $blocks );
+check( 'meta' !== $r['mode'], 'split_for_post: out-of-range meta falls back to auto' );
+$r = CrawlerToll_Cut::split_for_post( 44, $blocks );
+check( 'meta' !== $r['mode'], 'split_for_post: meta 0 = auto' );
+// Explicit meta beats a <!--more--> marker (publisher's visual choice wins).
+$withmore = "<!-- wp:paragraph -->\n<p>A.</p>\n<!-- /wp:paragraph -->\n<!--more-->\n<!-- wp:paragraph -->\n<p>B.</p>\n<!-- /wp:paragraph -->\n<!-- wp:paragraph -->\n<p>C.</p>\n<!-- /wp:paragraph -->";
+$GLOBALS['ct_test_meta'][45] = 2;
+$r = CrawlerToll_Cut::split_for_post( 45, $withmore );
+check( 'meta' === $r['mode'] && strpos( $r['preview'], 'B.' ) !== false && strpos( $r['preview'], 'C.' ) === false, 'split_for_post: meta (cut after block 2) beats the <!--more--> marker (which would cut after A)' );
+
 echo "\n";
 echo 0 === $fail ? "ALL CUT-HARNESS TESTS PASSED\n" : "CUT-HARNESS FAILURES: $fail\n";
 exit( 0 === $fail ? 0 : 1 );
