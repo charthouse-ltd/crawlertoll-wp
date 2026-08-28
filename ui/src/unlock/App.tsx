@@ -82,6 +82,44 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
     setState("error");
   };
 
+  const applyOffer = (o: SignedOffer) => {
+    // Metered free articles: persist the (possibly re-minted) token so the next
+    // visit — here or on another article of this section — keeps the allowance.
+    if (o.meter && o.meter.token) {
+      const path = typeof (o.meter.token as { path?: unknown }).path === "string"
+        ? (o.meter.token as { path: string }).path
+        : "/";
+      meterTokenStore(path, o.meter.token);
+    }
+    setOffer(o);
+    setTiles(offerToRails(o, { hasStripeKey: hasStripeKey(), hasWallet: hasWallet() }));
+  };
+
+  // Prefetch the offer on mount so the idle card can LEAD with the free-read
+  // option when the reader has meter allowance left (Chris QA 2026-08-28: the
+  // old click-to-discover flow hid "Read free now" behind a price button — a
+  // reader with free reads should never see a price first). One cheap POST per
+  // premium pageview; no allowance is burned until the reader actually reads.
+  useEffect(() => {
+    if (!ready) {
+      return;
+    }
+    let cancelled = false;
+    fetchOffer(contentId)
+      .then((o) => {
+        if (!cancelled) {
+          applyOffer(o);
+        }
+      })
+      .catch(() => {
+        /* silent — the Unlock button retries via loadMenu and surfaces the error */
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const reveal = async (cek: string, fromCache = false) => {
     if (!blob) {
       return;
@@ -126,25 +164,20 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const loadMenu = async () => {
+  const loadMenu = async (force = false) => {
+    if (offer && !force) {
+      setState("menu"); // already prefetched on mount
+      return;
+    }
     setState("loading");
     try {
       const o = await fetchOffer(contentId);
-      // Metered free articles: persist the (possibly re-minted) token so the next
-      // visit — here or on another article of this section — keeps the allowance.
-      if (o.meter && o.meter.token) {
-        const path = typeof (o.meter.token as { path?: unknown }).path === "string"
-          ? (o.meter.token as { path: string }).path
-          : "/";
-        meterTokenStore(path, o.meter.token);
-      }
+      applyOffer(o);
       const t = offerToRails(o, { hasStripeKey: hasStripeKey(), hasWallet: hasWallet() });
       if (t.length === 0 && !(o.meter && o.meter.remaining > 0)) {
         setState("unavailable");
         return;
       }
-      setOffer(o);
-      setTiles(t);
       setState("menu");
     } catch (e) {
       fail(e);
@@ -164,7 +197,7 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
       await reveal(cek);
     } catch (e) {
       if (e instanceof UnlockError && (e.code === "unsettled" || e.code.startsWith("key_"))) {
-        await loadMenu();
+        await loadMenu(true); // force a fresh offer — the allowance may be gone
         return;
       }
       fail(e);
@@ -278,18 +311,45 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
           </button>
         </>
       ) : state === "idle" ? (
-        <>
-          <p style={{ fontSize: 15, fontWeight: 600 }}>Keep reading</p>
-          <p style={{ fontSize: 13, color: "var(--ct-muted)", margin: "4px 0 12px" }}>
-            {idlePrice
-              ? `Unlock the rest of this article for ${idlePrice} — one-time, no subscription.`
-              : "Unlock the rest of this article."}
-          </p>
-          <button type="button" onClick={loadMenu} style={btn}>
-            {idlePrice ? `Unlock for ${idlePrice}` : "Unlock"}
-          </button>
-          {footer}
-        </>
+        offer?.meter && offer.meter.remaining > 0 ? (
+          <>
+            <p style={{ fontSize: 15, fontWeight: 600 }}>Keep reading</p>
+            <p style={{ fontSize: 13, color: "var(--ct-muted)", margin: "4px 0 12px" }}>
+              {offer.meter.remaining} of {offer.meter.count} free articles left in this {offer.meter.window_days}-day window.
+            </p>
+            <button type="button" onClick={readFree} style={btn}>
+              Read free now
+            </button>
+            <p style={{ marginTop: 10, fontSize: 12 }}>
+              <button
+                type="button"
+                onClick={() => loadMenu()}
+                style={{ background: "none", border: "none", padding: 0, color: "var(--ct-muted)", textDecoration: "underline", cursor: "pointer", fontSize: 12 }}
+              >
+                {idlePrice ? `or unlock forever for ${idlePrice} — one-time` : "or unlock forever — one-time"}
+              </button>
+            </p>
+            {footer}
+          </>
+        ) : (
+          <>
+            <p style={{ fontSize: 15, fontWeight: 600 }}>Keep reading</p>
+            <p style={{ fontSize: 13, color: "var(--ct-muted)", margin: "4px 0 12px" }}>
+              {idlePrice
+                ? `Unlock the rest of this article for ${idlePrice} — one-time, no subscription.`
+                : "Unlock the rest of this article."}
+            </p>
+            {offer?.meter && offer.meter.remaining <= 0 ? (
+              <p style={{ fontSize: 12, color: "var(--ct-muted)", margin: "0 0 10px" }}>
+                You've read your {offer.meter.count} free article{offer.meter.count === 1 ? "" : "s"} for this {offer.meter.window_days}-day window.
+              </p>
+            ) : null}
+            <button type="button" onClick={() => loadMenu()} style={btn}>
+              {idlePrice ? `Unlock for ${idlePrice}` : "Unlock"}
+            </button>
+            {footer}
+          </>
+        )
       ) : state === "loading" || state === "processing" ? (
         <>
           <p style={{ fontSize: 14, color: "var(--ct-muted)" }}>{state === "processing" ? "Confirming payment…" : "Loading…"}</p>
