@@ -326,7 +326,9 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
                 onClick={() => loadMenu()}
                 style={{ background: "none", border: "none", padding: 0, color: "var(--ct-muted)", textDecoration: "underline", cursor: "pointer", fontSize: 12 }}
               >
-                {idlePrice ? `or unlock forever for ${idlePrice} — one-time` : "or unlock forever — one-time"}
+                {idlePrice
+                  ? `or pay ${idlePrice} once for this article — keeps your free reads for other articles`
+                  : "or pay once for this article — keeps your free reads for other articles"}
               </button>
             </p>
             {footer}
@@ -379,7 +381,7 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
               <button type="button" onClick={readFree} style={{ ...tileBtn, border: "1px solid var(--ct-accent)" }}>
                 <span style={{ fontWeight: 600 }}>Read free now</span>
                 <span style={{ color: "var(--ct-muted)" }}>
-                  {offer.meter.remaining - 1} of {offer.meter.count} free articles left after this one
+                  uses 1 free read — {offer.meter.remaining - 1} of {offer.meter.count} left after this one
                 </span>
               </button>
             ) : null}
