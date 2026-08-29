@@ -16,8 +16,18 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 // Render saved rules followed by 3 blank rows for new entries — no JS needed,
 // blank paths are skipped on save (clear a path + save to delete its rule).
-$blank   = array( 'path' => '', 'price_micros' => '', 'currency' => $site_currency, 'meter_count' => '', 'meter_window' => '' );
+$blank   = array( 'path' => '', 'price_micros' => '', 'currency' => $site_currency, 'meter_count' => '', 'meter_window' => '', 'tiers' => array() );
 $display = array_merge( $rules, array( $blank, $blank, $blank ) );
+
+// Access tiers (A2): duration select choices. Stored as duration_hours
+// (null = no expiry); 'custom' pairs with the days input beside it.
+$ct_dur_choices = array(
+	'none'   => __( 'No expiry', 'crawlertoll' ),
+	'24'     => __( '24 hours', 'crawlertoll' ),
+	'168'    => __( '7 days', 'crawlertoll' ),
+	'720'    => __( '30 days', 'crawlertoll' ),
+	'custom' => __( 'Custom days →', 'crawlertoll' ),
+);
 ?>
 <div class="ct-pro-pricing">
 	<h2><?php esc_html_e( 'Per-path pricing', 'crawlertoll' ); ?></h2>
@@ -26,6 +36,9 @@ $display = array_merge( $rules, array( $blank, $blank, $blank ) );
 	</p>
 	<p class="description" style="max-width:640px;">
 		<?php esc_html_e( 'Free articles: let each reader open N articles on this path for free before the paywall asks for payment (per rolling window). 0 or blank = paywall from the first article. AI crawlers always pay — the allowance is for human readers only.', 'crawlertoll' ); ?>
+	</p>
+	<p class="description" style="max-width:640px;">
+		<?php esc_html_e( 'Access tiers: offer temporary access at a lower price. Readers who pick 24 hours can return within 24 h without paying again; after that they are asked to renew. Add up to 4 price rows per rule — the reader sees one button per row. Blank price = row unused; no rows at all = the flat single price above, with no expiry.', 'crawlertoll' ); ?>
 	</p>
 	<p class="description">
 		<?php
@@ -43,15 +56,16 @@ $display = array_merge( $rules, array( $blank, $blank, $blank ) );
 		<table class="widefat striped" style="max-width:900px;margin-top:12px;">
 			<thead>
 				<tr>
-					<th style="width:34%;"><?php esc_html_e( 'Path prefix', 'crawlertoll' ); ?></th>
+					<th style="width:22%;"><?php esc_html_e( 'Path prefix', 'crawlertoll' ); ?></th>
 					<th><?php esc_html_e( 'Price (micros)', 'crawlertoll' ); ?></th>
 					<th><?php esc_html_e( 'Currency', 'crawlertoll' ); ?></th>
 					<th><?php esc_html_e( 'Free articles', 'crawlertoll' ); ?></th>
 					<th><?php esc_html_e( 'Window (days)', 'crawlertoll' ); ?></th>
+					<th style="width:30%;"><?php esc_html_e( 'Access tiers (price micros → access duration)', 'crawlertoll' ); ?></th>
 				</tr>
 			</thead>
 			<tbody>
-				<?php foreach ( $display as $rule ) : ?>
+				<?php foreach ( $display as $i => $rule ) : ?>
 					<?php
 					$r_path  = isset( $rule['path'] ) ? (string) $rule['path'] : '';
 					$r_price = ( isset( $rule['price_micros'] ) && '' !== $rule['price_micros'] ) ? (string) (int) $rule['price_micros'] : '';
@@ -71,6 +85,35 @@ $display = array_merge( $rules, array( $blank, $blank, $blank ) );
 						</td>
 						<td><input type="number" min="0" max="50" step="1" name="ct_meter_count[]" value="<?php echo esc_attr( $r_mcount ); ?>" placeholder="0" /></td>
 						<td><input type="number" min="1" max="365" step="1" name="ct_meter_window[]" value="<?php echo esc_attr( $r_mwin ); ?>" placeholder="30" /></td>
+						<td>
+							<?php
+							$r_tiers = ( isset( $rule['tiers'] ) && is_array( $rule['tiers'] ) ) ? $rule['tiers'] : array();
+							for ( $j = 0; $j < 4; $j++ ) :
+								$t        = isset( $r_tiers[ $j ] ) && is_array( $r_tiers[ $j ] ) ? $r_tiers[ $j ] : null;
+								$t_price  = $t && isset( $t['price_micros'] ) ? (string) (int) $t['price_micros'] : '';
+								$t_durh   = $t && array_key_exists( 'duration_hours', $t ) ? $t['duration_hours'] : null;
+								if ( null === $t_durh ) {
+									$t_sel = 'none';
+									$t_cus = '';
+								} elseif ( in_array( (int) $t_durh, array( 24, 168, 720 ), true ) ) {
+									$t_sel = (string) (int) $t_durh;
+									$t_cus = '';
+								} else {
+									$t_sel = 'custom';
+									$t_cus = (string) max( 1, (int) round( (int) $t_durh / 24 ) );
+								}
+								?>
+								<div style="display:flex;gap:4px;align-items:center;margin-bottom:3px;">
+									<input type="number" min="0" step="1" name="ct_tier_price[<?php echo esc_attr( (string) $i ); ?>][]" value="<?php echo esc_attr( $t_price ); ?>" placeholder="micros" style="width:80px;" />
+									<select name="ct_tier_dur[<?php echo esc_attr( (string) $i ); ?>][]">
+										<?php foreach ( $ct_dur_choices as $val => $label ) : ?>
+											<option value="<?php echo esc_attr( $val ); ?>" <?php selected( $t_sel, $val ); ?>><?php echo esc_html( $label ); ?></option>
+										<?php endforeach; ?>
+									</select>
+									<input type="number" min="1" max="365" step="1" name="ct_tier_custom[<?php echo esc_attr( (string) $i ); ?>][]" value="<?php echo esc_attr( $t_cus ); ?>" placeholder="days" style="width:60px;" title="<?php esc_attr_e( 'Custom duration in days (only used with “Custom days”)', 'crawlertoll' ); ?>" />
+								</div>
+							<?php endfor; ?>
+						</td>
 					</tr>
 				<?php endforeach; ?>
 			</tbody>

@@ -39,6 +39,8 @@ class CrawlerToll_Registry {
 
 require __DIR__ . '/../includes/class-crawlertoll-meter.php'; // free-safe meter resolver (no Pro active in harness → null)
 
+require __DIR__ . '/../includes/class-crawlertoll-tiers.php'; // free-safe tiers resolver (A2; no Pro active in harness → null)
+
 require __DIR__ . '/../includes/class-crawlertoll-sealed-gate.php';
 
 // Drives the gate as if a declared agent hit the gated post (echoes 402 + exits).

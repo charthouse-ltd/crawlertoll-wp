@@ -97,6 +97,14 @@ export interface PathRule {
   // Absent/0 = paywall from the first article.
   meter_count?: number | string;
   meter_window?: number | string;
+  // Access tiers (Pro, A2): up to 4 price×duration offers. duration_hours
+  // null = "no expiry". Absent = legacy single-price.
+  tiers?: AccessTier[];
+}
+
+export interface AccessTier {
+  price_micros: number;
+  duration_hours: number | null;
 }
 
 export interface AlertSettings {

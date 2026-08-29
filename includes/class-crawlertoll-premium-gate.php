@@ -590,6 +590,8 @@ class CrawlerToll_Premium_Gate {
 		$currency = (string) $settings['currency'];
 		// Metered free articles (Pro): per-path free allowance from the permalink.
 		$meter    = CrawlerToll_Meter::resolve_for_post( $post_id, $settings );
+		// Access tiers (Pro, A2): per-path price×duration set from the permalink.
+		$tiers    = CrawlerToll_Tiers::resolve_for_post( $post_id, $settings );
 
 		$cached = get_post_meta( $post_id, self::SEAL_META, true );
 		if ( is_array( $cached ) && isset( $cached['hash'], $cached['blob'] ) && $cached['hash'] === $hash ) {
@@ -601,15 +603,26 @@ class CrawlerToll_Premium_Gate {
 			$cached_curr  = isset( $cached['currency'] ) ? (string) $cached['currency'] : '';
 			$cached_meter = isset( $cached['meter'] ) ? $cached['meter'] : null;
 			$meters_differ = wp_json_encode( $cached_meter ) !== wp_json_encode( $meter );
-			if ( $cached_price !== $price || $cached_curr !== $currency || $meters_differ ) {
+			$cached_tiers  = isset( $cached['tiers'] ) ? $cached['tiers'] : null;
+			$tiers_differ  = wp_json_encode( $cached_tiers ) !== wp_json_encode( $tiers );
+			if ( $cached_price !== $price || $cached_curr !== $currency || $meters_differ || $tiers_differ ) {
 				$host = wp_parse_url( home_url(), PHP_URL_HOST );
 				$cid  = CrawlerToll_Sealed_Gate::build_content_id( $host, $post_id );
-				$res  = ( new CrawlerToll_Registry() )->update_sealed_price( $cid, $price, $currency, $meters_differ ? $meter : false );
+				$res  = ( new CrawlerToll_Registry() )->update_sealed_price(
+					$cid,
+					$price,
+					$currency,
+					$meters_differ ? $meter : false,
+					$tiers_differ ? $tiers : false
+				);
 				if ( ! is_wp_error( $res ) ) {
 					$cached['price_micros'] = $price;
 					$cached['currency']     = $currency;
 					if ( $meters_differ ) {
 						$cached['meter'] = $meter;
+					}
+					if ( $tiers_differ ) {
+						$cached['tiers'] = $tiers;
 					}
 					update_post_meta( $post_id, self::SEAL_META, $cached );
 				}
@@ -627,7 +640,7 @@ class CrawlerToll_Premium_Gate {
 		}
 
 		$registry = new CrawlerToll_Registry();
-		$res      = $registry->register_sealed( $cid, $cek_b64, $price, $currency, 'premium', $meter );
+		$res      = $registry->register_sealed( $cid, $cek_b64, $price, $currency, 'premium', $meter, $tiers );
 		if ( is_wp_error( $res ) || empty( $res['status'] ) || 'registered' !== $res['status'] ) {
 			// Never serve a blob whose CEK the escrow didn't store — fail closed.
 			return $this->blob[ $post_id ] = false;
@@ -643,6 +656,7 @@ class CrawlerToll_Premium_Gate {
 				'price_micros'  => $price,
 				'currency'      => $currency,
 				'meter'         => $meter,
+				'tiers'         => $tiers,
 				'registered_at' => current_time( 'mysql' ),
 			)
 		);

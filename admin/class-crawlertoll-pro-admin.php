@@ -381,6 +381,9 @@ class CrawlerToll_Pro_Admin {
 			$currs  = ( isset( $_POST['ct_price_currency'] ) && is_array( $_POST['ct_price_currency'] ) ) ? wp_unslash( $_POST['ct_price_currency'] ) : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- whitelisted below.
 			$meters = ( isset( $_POST['ct_meter_count'] ) && is_array( $_POST['ct_meter_count'] ) ) ? wp_unslash( $_POST['ct_meter_count'] ) : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- cast below.
 			$mwin   = ( isset( $_POST['ct_meter_window'] ) && is_array( $_POST['ct_meter_window'] ) ) ? wp_unslash( $_POST['ct_meter_window'] ) : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- cast below.
+			$tprice = ( isset( $_POST['ct_tier_price'] ) && is_array( $_POST['ct_tier_price'] ) ) ? wp_unslash( $_POST['ct_tier_price'] ) : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- cast below.
+			$tdur   = ( isset( $_POST['ct_tier_dur'] ) && is_array( $_POST['ct_tier_dur'] ) ) ? wp_unslash( $_POST['ct_tier_dur'] ) : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- whitelisted below.
+			$tcustom = ( isset( $_POST['ct_tier_custom'] ) && is_array( $_POST['ct_tier_custom'] ) ) ? wp_unslash( $_POST['ct_tier_custom'] ) : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- cast below.
 
 			$rules = array();
 			foreach ( $paths as $i => $p ) {
@@ -400,6 +403,30 @@ class CrawlerToll_Pro_Admin {
 				if ( $mcount > 0 ) {
 					$rule['meter_count']  = $mcount;
 					$rule['meter_window'] = isset( $mwin[ $i ] ) ? min( 365, max( 1, (int) $mwin[ $i ] ) ) : 30;
+				}
+				// Access tiers (A2): up to 4 price×duration rows. Blank price =
+				// row unused; duration select presets or "custom days". Final
+				// clamp rides the shared sanitizer (mirrors the REST save).
+				$raw_tiers = array();
+				for ( $j = 0; $j < 4; $j++ ) {
+					$pj = isset( $tprice[ $i ][ $j ] ) ? (int) $tprice[ $i ][ $j ] : 0;
+					if ( $pj <= 0 ) {
+						continue;
+					}
+					$sel = isset( $tdur[ $i ][ $j ] ) ? (string) $tdur[ $i ][ $j ] : 'none';
+					if ( 'custom' === $sel ) {
+						$days = isset( $tcustom[ $i ][ $j ] ) ? min( 365, max( 1, (int) $tcustom[ $i ][ $j ] ) ) : 30;
+						$dur  = $days * 24;
+					} elseif ( in_array( $sel, array( '24', '168', '720' ), true ) ) {
+						$dur = (int) $sel;
+					} else {
+						$dur = null; // 'none' and anything unexpected = no expiry.
+					}
+					$raw_tiers[] = array( 'price_micros' => $pj, 'duration_hours' => $dur );
+				}
+				$tiers = CrawlerToll_Tiers::sanitize_rows( $raw_tiers );
+				if ( $tiers ) {
+					$rule['tiers'] = $tiers;
 				}
 				$rules[] = $rule;
 			}

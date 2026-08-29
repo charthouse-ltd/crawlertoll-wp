@@ -530,6 +530,11 @@ class CrawlerToll_Plugin {
 				$rule['meter_count']  = $mcount;
 				$rule['meter_window'] = isset( $row['meter_window'] ) ? min( 365, max( 1, (int) $row['meter_window'] ) ) : 30;
 			}
+			// Access tiers (Pro, A2): up to 4 price×duration rows; absent/empty = off.
+			$tiers = CrawlerToll_Tiers::sanitize_rows( isset( $row['tiers'] ) ? $row['tiers'] : null );
+			if ( $tiers ) {
+				$rule['tiers'] = $tiers;
+			}
 			$rules[] = $rule;
 		}
 

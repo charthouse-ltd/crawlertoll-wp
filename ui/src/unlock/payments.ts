@@ -175,8 +175,16 @@ async function ensureChain(domain: { chainId: number }): Promise<void> {
  * x402: sign an EIP-3009 transferWithAuthorization with the reader's wallet and
  * redeem with an X-PAYMENT header. Requires the offer to carry the token domain
  * (chainId/verifyingContract/name/version) — surfaced as a clear error if absent.
+ *
+ * A2: when `tier` is given, the authorization signs THAT tier's price and the
+ * redemption echoes its tier_id — the registry re-derives price and duration
+ * server-side, so a client-side tamper only produces a 402, never a discount.
  */
-export async function payX402(contentId: string, offer: SignedOffer): Promise<PaidRelease> {
+export async function payX402(
+  contentId: string,
+  offer: SignedOffer,
+  tier?: { tier_id: string; price_micros: number; duration_hours: number | null },
+): Promise<PaidRelease> {
   const x = offer.x402;
   if (!x || !x.payTo) {
     throw new UnlockError("USDC unlock is unavailable.", "x402_unavailable");
@@ -203,11 +211,13 @@ export async function payX402(contentId: string, offer: SignedOffer): Promise<Pa
   }
   const account = from[0];
   await ensureChain(domain);
+  // A2: the tier's price wins when present; otherwise the offer's base price.
+  const priceMicros = tier ? tier.price_micros : (x.priceMicros ?? 0);
   const now = Math.floor(Date.now() / 1000);
   const authorization = {
     from: account,
     to: x.payTo,
-    value: String(x.priceMicros ?? 0),
+    value: String(priceMicros),
     validAfter: "0",
     validBefore: String(now + 600),
     nonce: `0x${crypto.getRandomValues(new Uint8Array(32)).reduce((a, b) => a + b.toString(16).padStart(2, "0"), "")}`,
@@ -263,7 +273,7 @@ export async function payX402(contentId: string, offer: SignedOffer): Promise<Pa
             accepted: {
               scheme: "exact",
               network: x.networkCaip2,
-              amount: String(x.priceMicros ?? 0),
+              amount: String(priceMicros),
               asset: x.asset,
               payTo: x.payTo,
               maxTimeoutSeconds: 300,
@@ -279,6 +289,6 @@ export async function payX402(contentId: string, offer: SignedOffer): Promise<Pa
           },
     ),
   );
-  const res = await redeemX402(contentId, xPayment, version);
+  const res = await redeemX402(contentId, xPayment, version, tier?.tier_id);
   return { cek: res.cek, pass: res.pass };
 }

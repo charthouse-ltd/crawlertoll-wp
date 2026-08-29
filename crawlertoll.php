@@ -91,6 +91,7 @@ require_once CRAWLERTOLL_PLUGIN_DIR . 'includes/class-crawlertoll-cut.php';
 require_once CRAWLERTOLL_PLUGIN_DIR . 'includes/class-crawlertoll-sealed.php';
 require_once CRAWLERTOLL_PLUGIN_DIR . 'includes/class-crawlertoll-registry.php';
 require_once CRAWLERTOLL_PLUGIN_DIR . 'includes/class-crawlertoll-meter.php';
+require_once CRAWLERTOLL_PLUGIN_DIR . 'includes/class-crawlertoll-tiers.php';
 require_once CRAWLERTOLL_PLUGIN_DIR . 'includes/class-crawlertoll-sealed-gate.php';
 require_once CRAWLERTOLL_PLUGIN_DIR . 'includes/class-crawlertoll-premium-gate.php';
 // Pro classes. These files are STRIPPED from the free wp.org build (see build.sh),

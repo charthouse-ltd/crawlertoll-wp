@@ -100,6 +100,8 @@ class CrawlerToll_Sealed_Gate {
 		// Metered free articles (Pro): per-path free allowance resolved from the
 		// post's permalink. Null for free tier / unmetered paths.
 		$meter  = CrawlerToll_Meter::resolve_for_post( $post_id, $settings );
+		// Access tiers (Pro, A2): per-path price×duration set from the permalink.
+		$tiers  = CrawlerToll_Tiers::resolve_for_post( $post_id, $settings );
 		$cached = get_post_meta( $post_id, self::META_KEY, true );
 		if ( is_array( $cached ) && isset( $cached['hash'], $cached['blob'] ) && $cached['hash'] === $hash ) {
 			// Reprice without re-sealing when the commercial terms changed (audit
@@ -109,13 +111,24 @@ class CrawlerToll_Sealed_Gate {
 			$cached_curr  = isset( $cached['currency'] ) ? (string) $cached['currency'] : '';
 			$cached_meter = isset( $cached['meter'] ) ? $cached['meter'] : null;
 			$meters_differ = wp_json_encode( $cached_meter ) !== wp_json_encode( $meter );
-			if ( $cached_price !== $price || $cached_curr !== $curr || $meters_differ ) {
-				$res = ( new CrawlerToll_Registry() )->update_sealed_price( $cid, $price, $curr, $meters_differ ? $meter : false );
+			$cached_tiers  = isset( $cached['tiers'] ) ? $cached['tiers'] : null;
+			$tiers_differ  = wp_json_encode( $cached_tiers ) !== wp_json_encode( $tiers );
+			if ( $cached_price !== $price || $cached_curr !== $curr || $meters_differ || $tiers_differ ) {
+				$res = ( new CrawlerToll_Registry() )->update_sealed_price(
+					$cid,
+					$price,
+					$curr,
+					$meters_differ ? $meter : false,
+					$tiers_differ ? $tiers : false
+				);
 				if ( ! is_wp_error( $res ) ) {
 					$cached['price_micros'] = $price;
 					$cached['currency']     = $curr;
 					if ( $meters_differ ) {
 						$cached['meter'] = $meter;
+					}
+					if ( $tiers_differ ) {
+						$cached['tiers'] = $tiers;
 					}
 					update_post_meta( $post_id, self::META_KEY, $cached );
 				}
@@ -138,7 +151,8 @@ class CrawlerToll_Sealed_Gate {
 			$price,
 			$curr,
 			'full',
-			$meter
+			$meter,
+			$tiers
 		);
 		if ( is_wp_error( $result ) || empty( $result['status'] ) || 'registered' !== $result['status'] ) {
 			return false;
@@ -154,6 +168,7 @@ class CrawlerToll_Sealed_Gate {
 				'price_micros'  => $price,
 				'currency'      => $curr,
 				'meter'         => $meter,
+				'tiers'         => $tiers,
 				'registered_at' => current_time( 'mysql' ),
 			)
 		);

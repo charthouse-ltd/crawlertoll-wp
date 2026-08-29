@@ -151,9 +151,11 @@ export function redeemStripe(contentId: string, passId: string, intentId: string
 
 /** x402: redeem with the payment header built from a wallet signature.
  *  V2 sends PAYMENT-SIGNATURE, legacy V1 sends X-PAYMENT — the registry
- *  accepts both, keyed on the payload's x402Version. */
-export function redeemX402(contentId: string, xPayment: string, version: 1 | 2 = 1): Promise<KeyResponse> {
-  return postKey(contentId, {}, { [version === 2 ? "PAYMENT-SIGNATURE" : "X-PAYMENT"]: xPayment });
+ *  accepts both, keyed on the payload's x402Version. When a tier is given,
+ *  its tier_id is echoed in the body so the registry re-derives that tier's
+ *  price AND duration server-side (spec §3). */
+export function redeemX402(contentId: string, xPayment: string, version: 1 | 2 = 1, tierId?: string): Promise<KeyResponse> {
+  return postKey(contentId, tierId ? { tier_id: tierId } : {}, { [version === 2 ? "PAYMENT-SIGNATURE" : "X-PAYMENT"]: xPayment });
 }
 
 /** Meter: redeem a free read against the reader's meter token (no payment). */

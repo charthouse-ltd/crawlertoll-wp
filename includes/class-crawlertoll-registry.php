@@ -127,8 +127,8 @@ class CrawlerToll_Registry {
 	 * @param string $scope
 	 * @return array|WP_Error Decoded JSON, or WP_Error on transport failure.
 	 */
-	public function register_sealed( $content_id, $cek_b64, $price_micros, $currency = 'USDC', $scope = 'full', $meter = null ) {
-		$response = $this->post_sealed_register( $content_id, $cek_b64, $price_micros, $currency, $scope, $meter );
+	public function register_sealed( $content_id, $cek_b64, $price_micros, $currency = 'USDC', $scope = 'full', $meter = null, $tiers = null ) {
+		$response = $this->post_sealed_register( $content_id, $cek_b64, $price_micros, $currency, $scope, $meter, $tiers );
 		if ( is_wp_error( $response ) ) {
 			return $response;
 		}
@@ -144,7 +144,7 @@ class CrawlerToll_Registry {
 			&& in_array( $data['error'], array( 'publisher_not_enrolled', 'invalid_token', 'missing_bearer_token' ), true ) ) {
 			$enroll = $this->register_with_registry();
 			if ( ! is_wp_error( $enroll ) && is_array( $enroll ) && isset( $enroll['status'] ) && 'registered' === $enroll['status'] ) {
-				$response = $this->post_sealed_register( $content_id, $cek_b64, $price_micros, $currency, $scope, $meter );
+				$response = $this->post_sealed_register( $content_id, $cek_b64, $price_micros, $currency, $scope, $meter, $tiers );
 				if ( is_wp_error( $response ) ) {
 					return $response;
 				}
@@ -159,7 +159,7 @@ class CrawlerToll_Registry {
 	 *
 	 * @return array|WP_Error Raw HTTP response, or WP_Error on transport failure.
 	 */
-	private function post_sealed_register( $content_id, $cek_b64, $price_micros, $currency, $scope, $meter = null ) {
+	private function post_sealed_register( $content_id, $cek_b64, $price_micros, $currency, $scope, $meter = null, $tiers = null ) {
 		$settings = wp_parse_args( (array) get_option( CRAWLERTOLL_OPTION_KEY ), crawlertoll_default_settings() );
 		$body     = array(
 			'content_id'   => $content_id,
@@ -176,6 +176,12 @@ class CrawlerToll_Registry {
 				'window_days' => isset( $meter['window_days'] ) ? (int) $meter['window_days'] : 30,
 				'path'        => isset( $meter['path'] ) ? (string) $meter['path'] : '/',
 			);
+		}
+		// Access tiers (Pro, A2): the registry sanitizes again server-side and
+		// fails closed to legacy single-price on anything malformed (spec §4.2).
+		$tiers = CrawlerToll_Tiers::sanitize_rows( $tiers );
+		if ( $tiers ) {
+			$body['tiers'] = $tiers;
 		}
 		// R1.x-a: the publisher's USDC payout address. Without it the registry
 		// advertises x402 with no payee and (in production) fails closed — paid
@@ -246,9 +252,11 @@ class CrawlerToll_Registry {
 	 * @param string           $currency
 	 * @param array|null|false $meter Metered-free-articles meta: array sets it,
 	 *                                null disables it, false (default) leaves it untouched.
+	 * @param array|null|false $tiers Access-tier set (A2): array sets it, null
+	 *                                disables it, false (default) leaves untouched.
 	 * @return array|WP_Error
 	 */
-	public function update_sealed_price( $content_id, $price_micros, $currency, $meter = false ) {
+	public function update_sealed_price( $content_id, $price_micros, $currency, $meter = false, $tiers = false ) {
 		$settings = wp_parse_args( (array) get_option( CRAWLERTOLL_OPTION_KEY ), crawlertoll_default_settings() );
 		$body     = array(
 			'publisher'    => wp_parse_url( home_url(), PHP_URL_HOST ),
@@ -263,6 +271,10 @@ class CrawlerToll_Registry {
 					'path'        => isset( $meter['path'] ) ? (string) $meter['path'] : '/',
 				)
 				: null; // Explicit disable — the registry deletes the meter meta.
+		}
+		if ( false !== $tiers ) {
+			$rows = CrawlerToll_Tiers::sanitize_rows( $tiers );
+			$body['tiers'] = $rows ? $rows : null; // Null = explicit disable.
 		}
 		if ( ! empty( $settings['x402_pay_to'] ) && preg_match( '/^0x[0-9a-fA-F]{40}$/', (string) $settings['x402_pay_to'] ) ) {
 			$body['x402_pay_to'] = (string) $settings['x402_pay_to'];

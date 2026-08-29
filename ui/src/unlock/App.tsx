@@ -92,6 +92,10 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
   const [bodyHtml, setBodyHtml] = useState("");
   const [walletHint, setWalletHint] = useState(false);
   const [renewing, setRenewing] = useState(false);
+  // A2: after an expired duration tier fails silent renewal, the wall returns
+  // with a one-line "access ended" note so the re-pay is understood as a
+  // renewal, not a double charge. (A3 refines the full renew copy.)
+  const [renewNote, setRenewNote] = useState("");
   const [stripePass, setStripePass] = useState("");
   const [expressUp, setExpressUp] = useState(false);
   const stripeNode = useRef<HTMLDivElement>(null);
@@ -196,9 +200,13 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
     setState("processing");
     try {
       const r = await renewPass(contentId, passId);
+      setRenewNote("");
       await reveal(r.cek, false, r.pass ?? { pass_id: passId, expires_at: null });
-    } catch {
+    } catch (e) {
       cekClear(contentId);
+      if (e instanceof UnlockError && e.code === "pass_expired") {
+        setRenewNote("Your access to this article has ended — renew below.");
+      }
       setState("idle");
     } finally {
       setRenewing(false);
@@ -281,7 +289,10 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
       setWalletHint(false);
       const hintTimer = window.setTimeout(() => setWalletHint(true), 2500);
       try {
-        const r = await payX402(contentId, offer);
+        // A2: a tier tile pays that tier's price and echoes its tier_id — the
+        // registry re-derives both server-side (spec §3).
+        const r = await payX402(contentId, offer, tile.tier);
+        setRenewNote("");
         await reveal(r.cek, false, r.pass);
       } catch (e) {
         fail(e);
@@ -375,7 +386,11 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
           </button>
         </>
       ) : state === "idle" ? (
-        offer?.meter && offer.meter.remaining > 0 ? (
+        <>
+          {renewNote ? (
+            <p style={{ fontSize: 13, fontWeight: 600, color: "var(--ct-text)", margin: "0 0 8px" }}>{renewNote}</p>
+          ) : null}
+          {offer?.meter && offer.meter.remaining > 0 ? (
           <>
             <p style={{ fontSize: 15, fontWeight: 600 }}>Keep reading</p>
             <p style={{ fontSize: 13, color: "var(--ct-muted)", margin: "4px 0 12px" }}>
@@ -415,7 +430,8 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
             </button>
             {footer}
           </>
-        )
+          )}
+        </>
       ) : state === "loading" || state === "processing" ? (
         <>
           <p style={{ fontSize: 14, color: "var(--ct-muted)" }}>
@@ -441,6 +457,9 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
         </>
       ) : (
         <>
+          {renewNote ? (
+            <p style={{ fontSize: 13, fontWeight: 600, color: "var(--ct-text)", margin: "0 0 8px" }}>{renewNote}</p>
+          ) : null}
           <p style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>Choose how to unlock</p>
           <div style={{ display: "grid", gap: 8 }}>
             {offer?.meter && offer.meter.remaining > 0 ? (

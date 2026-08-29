@@ -33,6 +33,11 @@ export interface SignedOffer {
   publisher?: string;
   x402?: X402Offer | null;
   passes?: OfferPass[];
+  // Access tiers (A2, spec §3): price×duration offers, INSIDE the signed offer
+  // (the signature covers the set — a tampered tier invalidates verification).
+  // The client echoes tier_id at redemption; the registry re-derives price AND
+  // duration server-side, so client-side values are display-only.
+  tiers?: Array<{ tier_id: string; price_micros: number; duration_hours: number | null }>;
   // Metered free articles (Pro): UNSIGNED sibling of the signed offer — UI state
   // only. Present when this human reader is on a metered path. remaining 0 means
   // the allowance is used up (paid rails only).
@@ -54,6 +59,8 @@ export interface RailTile {
   reason?: string; // why disabled (shown to the reader)
   passId?: string; // stripe pass to redeem
   priceLabel?: string;
+  // A2: the access tier this tile buys (x402). Absent = legacy single price.
+  tier?: { tier_id: string; price_micros: number; duration_hours: number | null };
 }
 
 export interface UnlockEnv {
@@ -83,6 +90,16 @@ function fmtMicros(micros?: number, currency?: string): string {
   return `${sym}${str}`;
 }
 
+/** A2: human duration label for tier tiles. null = "No expiry" (never "forever", spec §7). */
+function durationLabel(hours: number | null): string {
+  if (hours === null || hours === undefined) return "No expiry";
+  if (hours === 24) return "24-hour access";
+  if (hours === 168) return "7-day access";
+  if (hours === 720) return "30-day access";
+  if (hours % 24 === 0) return `${Math.round(hours / 24)}-day access`;
+  return `${hours}-hour access`;
+}
+
 /**
  * Returns the rail tiles to render. Empty array ⇒ "unlock unavailable" (no
  * configured rail). A disabled tile shows its reason rather than vanishing, so
@@ -106,17 +123,35 @@ export function offerToRails(offer: SignedOffer, env: UnlockEnv): RailTile[] {
   if (offer.x402 && offer.x402.payTo) {
     // Label honestly: a testnet charge is not real money and must never look like it.
     const isTestnet = offer.x402.testnet === true || /sepolia|devnet/i.test(offer.x402.network || "");
-    tiles.push({
-      rail: "x402",
-      key: "x402",
-      label: isTestnet ? "Pay with USDC (testnet)" : "Pay with USDC (x402)",
-      // Always clickable: with no wallet injected, clicking surfaces an
-      // actionable "get a wallet" prompt (Chris, QA 2026-08-12) instead of a
-      // dead grey tile the reader can't interrogate.
-      enabled: true,
-      reason: env.hasWallet ? undefined : "Needs a web3 wallet (e.g. MetaMask) — click for details.",
-      priceLabel: fmtMicros(offer.x402.priceMicros, offer.x402.currency),
-    });
+    const usdcLabel = isTestnet ? "USDC (testnet)" : "USDC";
+    const walletReason = env.hasWallet ? undefined : "Needs a web3 wallet (e.g. MetaMask) — click for details.";
+    const tiers = Array.isArray(offer.tiers) ? offer.tiers : [];
+    if (tiers.length > 0) {
+      // A2: one tile per (price × duration) tier — the tier set REPLACES the
+      // legacy single-price tile when configured (spec §3 menu).
+      for (const tier of tiers) {
+        tiles.push({
+          rail: "x402",
+          key: `x402:${tier.tier_id}`,
+          label: `${durationLabel(tier.duration_hours)} — pay with ${usdcLabel}`,
+          // Always clickable: with no wallet injected, clicking surfaces an
+          // actionable "get a wallet" prompt (Chris, QA 2026-08-12).
+          enabled: true,
+          reason: walletReason,
+          priceLabel: fmtMicros(tier.price_micros, offer.x402.currency),
+          tier,
+        });
+      }
+    } else {
+      tiles.push({
+        rail: "x402",
+        key: "x402",
+        label: isTestnet ? "Pay with USDC (testnet)" : "Pay with USDC (x402)",
+        enabled: true,
+        reason: walletReason,
+        priceLabel: fmtMicros(offer.x402.priceMicros, offer.x402.currency),
+      });
+    }
   }
 
   // Empty array ⇒ "unlock unavailable" (no configured rail). A disabled tile

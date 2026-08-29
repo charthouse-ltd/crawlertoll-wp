@@ -18,11 +18,53 @@ const inputStyle: CSSProperties = {
 /** A rule row keeps the price in CURRENCY UNITS for the UI (people think in
  *  cents, not micros) and converts to micros only on save. Meter fields are
  *  plain integers — "" means the meter is off for this section. */
+interface TierRow {
+  amount: string; // currency units, e.g. "0.005"
+  duration: string; // 'none' | '24' | '168' | '720' | 'custom'
+  customDays: string; // only when duration === 'custom'
+}
+
 interface Row {
   path: string;
   amount: string; // e.g. "0.01"
   freeArticles: string; // "" = off, "3" = 3 free reads per window
   windowDays: string; // "" = 30
+  tiers: TierRow[]; // access tiers (A2) — empty = legacy single price
+}
+
+const DUR_CHOICES: Array<[string, string]> = [
+  ["none", "No expiry"],
+  ["24", "24 hours"],
+  ["168", "7 days"],
+  ["720", "30 days"],
+  ["custom", "Custom days…"],
+];
+
+function tierToRow(t: { price_micros: number | string; duration_hours: number | null }): TierRow {
+  const dur = t.duration_hours;
+  if (dur === null || dur === undefined) {
+    return { amount: (Number(t.price_micros) / 1_000_000).toString(), duration: "none", customDays: "" };
+  }
+  const h = Number(dur);
+  if (h === 24 || h === 168 || h === 720) {
+    return { amount: (Number(t.price_micros) / 1_000_000).toString(), duration: String(h), customDays: "" };
+  }
+  return { amount: (Number(t.price_micros) / 1_000_000).toString(), duration: "custom", customDays: String(Math.max(1, Math.round(h / 24))) };
+}
+
+function tierFromRow(t: TierRow): { price_micros: number; duration_hours: number | null } | null {
+  const parsed = parseFloat(t.amount);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return null;
+  }
+  let dur: number | null = null;
+  if (t.duration === "custom") {
+    const days = parseInt(t.customDays, 10);
+    dur = Number.isFinite(days) && days > 0 ? Math.min(365, days) * 24 : 30 * 24;
+  } else if (t.duration !== "none") {
+    dur = parseInt(t.duration, 10);
+  }
+  return { price_micros: Math.round(parsed * 1_000_000), duration_hours: dur };
 }
 
 function toRow(r: PathRule, currency: string): Row {
@@ -32,6 +74,7 @@ function toRow(r: PathRule, currency: string): Row {
     amount: (Number(r.price_micros) / 1_000_000).toString(),
     freeArticles: r.meter_count ? String(Number(r.meter_count)) : "",
     windowDays: r.meter_window ? String(Number(r.meter_window)) : "",
+    tiers: Array.isArray(r.tiers) ? r.tiers.map(tierToRow) : [],
   };
 }
 
@@ -44,6 +87,10 @@ function toRule(r: Row, fallbackMicros: number, currency: string): PathRule {
     rule.meter_count = Math.min(50, free);
     const win = parseInt(r.windowDays, 10);
     rule.meter_window = Number.isFinite(win) && win > 0 ? Math.min(365, win) : 30;
+  }
+  const tiers = r.tiers.map(tierFromRow).filter((t): t is NonNullable<typeof t> => t !== null).slice(0, 4);
+  if (tiers.length > 0) {
+    rule.tiers = tiers;
   }
   return rule;
 }
@@ -67,7 +114,20 @@ function PricingForm({ settings }: { settings: SettingsResponse }) {
   const update = (i: number, patch: Partial<Row>) => setRows((rs) => rs.map((r, j) => (j === i ? { ...r, ...patch } : r)));
   const remove = (i: number) => setRows((rs) => rs.filter((_, j) => j !== i));
   const add = () =>
-    setRows((rs) => [...rs, { path: "", amount: (settings.price_micros / 1_000_000).toString(), freeArticles: "", windowDays: "" }]);
+    setRows((rs) => [...rs, { path: "", amount: (settings.price_micros / 1_000_000).toString(), freeArticles: "", windowDays: "", tiers: [] }]);
+
+  const updateTier = (i: number, j: number, patch: Partial<TierRow>) =>
+    setRows((rs) => rs.map((r, k) => (k === i ? { ...r, tiers: r.tiers.map((t, l) => (l === j ? { ...t, ...patch } : t)) } : r)));
+  const addTier = (i: number) =>
+    setRows((rs) =>
+      rs.map((r, k) =>
+        k === i && r.tiers.length < 4
+          ? { ...r, tiers: [...r.tiers, { amount: "", duration: "none", customDays: "" }] }
+          : r,
+      ),
+    );
+  const removeTier = (i: number, j: number) =>
+    setRows((rs) => rs.map((r, k) => (k === i ? { ...r, tiers: r.tiers.filter((_, l) => l !== j) } : r)));
 
   return (
     <Card>
@@ -170,6 +230,71 @@ function PricingForm({ settings }: { settings: SettingsResponse }) {
                 ? ` Readers get ${Number(r.freeArticles)} free article${Number(r.freeArticles) === 1 ? "" : "s"} every ${Number(r.windowDays) || 30} days on this section — AI crawlers always pay.`
                 : ""}
             </p>
+
+            {/* Access tiers (A2): optional price×duration offers for this section. */}
+            <div className="mt-3 rounded-lg p-3" style={{ background: "var(--ct-elevated)" }}>
+              <p className="text-[12px] font-semibold">Access tiers <span style={{ color: "var(--ct-muted)", fontWeight: 400 }}>(optional)</span></p>
+              <p className="mt-1 text-[12px]" style={{ color: "var(--ct-muted)" }}>
+                Offer temporary access at a lower price. A reader who picks 24 hours can return within 24 h without
+                paying again; after that they're asked to renew. One button per row on the paywall — no rows means the
+                single price above, with no expiry.
+              </p>
+              {r.tiers.map((t, j) => (
+                <div key={j} className="mt-2 grid items-center gap-2 sm:grid-cols-[130px_150px_110px_30px]">
+                  <div className="flex items-center gap-1">
+                    <span className="text-[13px] font-semibold" style={{ color: "var(--ct-muted)" }}>{sym}</span>
+                    <input
+                      style={inputStyle}
+                      type="number"
+                      min={0}
+                      step="0.0001"
+                      placeholder="0.005"
+                      value={t.amount}
+                      onChange={(e) => updateTier(i, j, { amount: e.target.value })}
+                    />
+                  </div>
+                  <select style={inputStyle} value={t.duration} onChange={(e) => updateTier(i, j, { duration: e.target.value })}>
+                    {DUR_CHOICES.map(([v, label]) => (
+                      <option key={v} value={v}>{label}</option>
+                    ))}
+                  </select>
+                  {t.duration === "custom" ? (
+                    <input
+                      style={inputStyle}
+                      type="number"
+                      min={1}
+                      max={365}
+                      step={1}
+                      placeholder="days"
+                      value={t.customDays}
+                      onChange={(e) => updateTier(i, j, { customDays: e.target.value })}
+                    />
+                  ) : (
+                    <span />
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => removeTier(i, j)}
+                    aria-label="Remove tier"
+                    title="Remove tier"
+                    className="rounded-lg py-1 text-[14px] font-bold"
+                    style={{ border: "1px solid var(--ct-border)", background: "var(--ct-surface)", color: "var(--ct-muted)" }}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+              {r.tiers.length < 4 && (
+                <button
+                  type="button"
+                  onClick={() => addTier(i)}
+                  className="mt-2 rounded-lg px-3 py-1 text-[12px] font-semibold"
+                  style={{ border: "1px dashed var(--ct-border)", background: "transparent", color: "var(--ct-accent)" }}
+                >
+                  + Add a tier{4 - r.tiers.length < 4 ? ` (${4 - r.tiers.length} left)` : ""}
+                </button>
+              )}
+            </div>
           </div>
         ))}
       </div>
