@@ -518,14 +518,22 @@
 				// publisher sees the target position live; the meta (and with it
 				// the marker, dimming and fade) updates on release only — no
 				// undo-history pollution from intermediate positions.
+				// PORTAL to document.body: this component renders inside the
+				// sealed block's wrapper, which carries `filter: grayscale()` —
+				// and any ancestor with filter/transform makes position:fixed
+				// resolve against that box instead of the viewport (Chris QA
+				// 2026-08-29: ghost appeared "much further down" than the cut).
 				var ghost = null;
 				if ( drag ) {
-					ghost = el(
-						'div',
-						{ style: Object.assign( {}, vizStyles.ghost, { top: drag.y, left: drag.left, width: drag.width } ) },
-						el( 'span', { style: vizStyles.ghostLine } ),
-						el( 'span', { style: vizStyles.ghostTag }, '✂ ' + __( 'cut after block ', 'crawlertoll' ) + drag.idx ),
-						el( 'span', { style: vizStyles.ghostLine } )
+					ghost = wp.element.createPortal(
+						el(
+							'div',
+							{ style: Object.assign( {}, vizStyles.ghost, { top: drag.y, left: drag.left, width: drag.width } ) },
+							el( 'span', { style: vizStyles.ghostLine } ),
+							el( 'span', { style: vizStyles.ghostTag }, '✂ ' + __( 'cut after block ', 'crawlertoll' ) + drag.idx ),
+							el( 'span', { style: vizStyles.ghostLine } )
+						),
+						document.body
 					);
 				}
 
