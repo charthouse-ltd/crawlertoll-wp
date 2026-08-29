@@ -424,10 +424,15 @@
 
 				// The cut seals AFTER unit N → the first sealed block sits at
 				// 0-based index N (automatic mode: after block 1 → index 1).
+				// sealedFrom === total is legal ("everything free"): the marker
+				// then sits BELOW the last block so it never vanishes, and no
+				// fade is applied — mirroring the front end, where cut=total
+				// means no sealed body and no fade (Chris QA 2026-08-29: a drop
+				// in the last block's lower half made the cut "jump").
 				var sealedFrom = info.cut > 0 ? info.cut : 1;
-				var applicable = info.premium && info.blockMarkup && info.isTopLevel && info.total > 1 && sealedFrom < info.total;
+				var applicable = info.premium && info.blockMarkup && info.isTopLevel && info.total > 1;
 				var isSealed = applicable && info.index >= sealedFrom;
-				var isLastFree = applicable && info.index === sealedFrom - 1;
+				var isLastFree = applicable && sealedFrom < info.total && info.index === sealedFrom - 1;
 
 				// Top-level block DOM siblings, found by climbing from our own
 				// block — no reliance on Gutenberg's internal class names.
@@ -456,6 +461,18 @@
 					}
 					return idx;
 				}
+				// The ghost SNAPS to block boundaries (not the raw cursor): the
+				// cut can only exist between blocks, so the preview must show
+				// the exact landing spot — what you see is what you drop.
+				function boundaryY( idx, sibs ) {
+					if ( ! sibs.length ) {
+						return null;
+					}
+					if ( idx >= sibs.length ) {
+						return sibs[ sibs.length - 1 ].getBoundingClientRect().bottom;
+					}
+					return sibs[ idx ].getBoundingClientRect().top;
+				}
 				function onMarkerDown( e ) {
 					e.preventDefault();
 					e.stopPropagation();
@@ -473,15 +490,19 @@
 						var pr = sibs[ 0 ].parentElement.getBoundingClientRect();
 						rect = { left: pr.left, width: pr.width };
 					}
-					setDrag( { y: e.clientY, idx: sealedFrom, left: rect.left, width: rect.width, doc: doc } );
+					var by = boundaryY( sealedFrom, sibs );
+					setDrag( { y: by !== null ? by : e.clientY, idx: sealedFrom, left: rect.left, width: rect.width, doc: doc } );
 				}
 				function onMarkerMove( e ) {
 					if ( ! drag ) {
 						return;
 					}
+					var sibs = topLevelSiblings( e.currentTarget );
+					var idx = candidateFromY( e.clientY, sibs );
+					var by = boundaryY( idx, sibs );
 					setDrag( {
-						y: e.clientY,
-						idx: candidateFromY( e.clientY, topLevelSiblings( e.currentTarget ) ),
+						y: by !== null ? by : e.clientY,
+						idx: idx,
 						left: drag.left,
 						width: drag.width,
 						doc: drag.doc,
@@ -498,8 +519,10 @@
 					}
 				}
 
+				var markerAbove = applicable && sealedFrom < info.total && info.index === sealedFrom;
+				var markerBelow = applicable && sealedFrom === info.total && info.index === info.total - 1;
 				var marker = null;
-				if ( applicable && info.index === sealedFrom ) {
+				if ( markerAbove || markerBelow ) {
 					marker = el(
 						'div',
 						{
@@ -514,9 +537,11 @@
 						el(
 							'span',
 							{ style: vizStyles.tag },
-							'🔒 ' + ( info.cut > 0
-								? __( 'Sealed from here', 'crawlertoll' )
-								: __( 'Automatic cut — sealed from here', 'crawlertoll' ) ) + ' · ' + __( 'drag to move', 'crawlertoll' )
+							( sealedFrom === info.total
+								? '🔓 ' + __( 'Nothing sealed — the whole article is free', 'crawlertoll' )
+								: '🔒 ' + ( info.cut > 0
+									? __( 'Sealed from here', 'crawlertoll' )
+									: __( 'Automatic cut — sealed from here', 'crawlertoll' ) ) ) + ' · ' + __( 'drag to move', 'crawlertoll' )
 						),
 						el( 'span', { style: vizStyles.line } )
 					);
@@ -537,7 +562,9 @@
 							'div',
 							{ style: Object.assign( {}, vizStyles.ghost, { top: drag.y, left: drag.left, width: drag.width } ) },
 							el( 'span', { style: vizStyles.ghostLine } ),
-							el( 'span', { style: vizStyles.ghostTag }, '✂ ' + __( 'cut after block ', 'crawlertoll' ) + drag.idx ),
+							el( 'span', { style: vizStyles.ghostTag },
+								'✂ ' + __( 'cut after block ', 'crawlertoll' ) + drag.idx +
+								( drag.idx >= info.total ? ' — ' + __( 'nothing sealed', 'crawlertoll' ) : '' ) ),
 							el( 'span', { style: vizStyles.ghostLine } )
 						),
 						( drag.doc || document ).body
@@ -553,7 +580,14 @@
 				if ( ! marker && ! wrapStyle && ! ghost ) {
 					return el( BlockEdit, props );
 				}
-				return el( 'div', { style: wrapStyle || undefined }, marker, el( BlockEdit, props ), ghost );
+				return el(
+					'div',
+					{ style: wrapStyle || undefined },
+					markerAbove ? marker : null,
+					el( BlockEdit, props ),
+					markerBelow ? marker : null,
+					ghost
+				);
 			};
 		}, 'withCrawlerTollCutViz' );
 		wp.hooks.addFilter( 'editor.BlockEdit', 'crawlertoll/cut-viz', withCutViz );
