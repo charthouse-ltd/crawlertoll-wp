@@ -271,12 +271,12 @@ test('JSON entries length matches', isset($decoded['entries']) && count($decoded
 test('JSON preserves bot_name', $decoded['entries'][0]['bot_name'] === 'GPTBot');
 
 echo "\n11. Multi-Rail Routing (§2.5)\n";
-$rail_settings = ['rail' => 'x402', 'rail_overrides' => ['GPTBot' => 'cloudflare-ppc', 'ClaudeBot' => 'tollbit']];
-test('Override applied for GPTBot', CrawlerToll_Pricing::resolve_rail('GPTBot', $rail_settings) === 'cloudflare-ppc');
-test('Override applied for ClaudeBot', CrawlerToll_Pricing::resolve_rail('ClaudeBot', $rail_settings) === 'tollbit');
+$rail_settings = ['rail' => 'x402', 'rail_overrides' => ['GPTBot' => 'stripe-acp', 'ClaudeBot' => 'custom']];
+test('Override applied for GPTBot', CrawlerToll_Pricing::resolve_rail('GPTBot', $rail_settings) === 'stripe-acp');
+test('Override applied for ClaudeBot', CrawlerToll_Pricing::resolve_rail('ClaudeBot', $rail_settings) === 'custom');
 test('Bot without override uses default', CrawlerToll_Pricing::resolve_rail('PerplexityBot', $rail_settings) === 'x402');
 test('Empty bot name uses default', CrawlerToll_Pricing::resolve_rail('', $rail_settings) === 'x402');
-test('No overrides key uses default', CrawlerToll_Pricing::resolve_rail('GPTBot', ['rail' => 'skyfire']) === 'skyfire');
+test('No overrides key uses default', CrawlerToll_Pricing::resolve_rail('GPTBot', ['rail' => 'stripe-acp']) === 'stripe-acp');
 test('Non-array overrides uses default', CrawlerToll_Pricing::resolve_rail('GPTBot', ['rail' => 'x402', 'rail_overrides' => 'bad']) === 'x402');
 test('Empty-string override falls back to default', CrawlerToll_Pricing::resolve_rail('GPTBot', ['rail' => 'x402', 'rail_overrides' => ['GPTBot' => '']]) === 'x402');
 

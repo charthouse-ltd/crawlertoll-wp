@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       CrawlerToll
  * Plugin URI:        https://crawlertoll.com
- * Description:       AI-crawler enforcement for WordPress. Detects AI crawlers (GPTBot, ClaudeBot, PerplexityBot, Google-Extended, +25 more), applies RSL 1.0 policy, and issues HTTP 402 with a structured payment offer. Vendor-neutral; works with TollBit, Skyfire, x402, Cloudflare Pay Per Crawl, and Stripe ACP.
+ * Description:       AI-crawler enforcement for WordPress. Detects AI crawlers (GPTBot, ClaudeBot, PerplexityBot, Google-Extended, +25 more), applies RSL 1.0 policy, and seals premium content behind HTTP 402 micropayments — settled on x402 (crypto) or Stripe (cards, Apple Pay, Google Pay), paid directly to the publisher.
  * Version:           2.0.0
  * Requires at least: 6.0
  * Requires PHP:      7.4
@@ -238,15 +238,24 @@ function crawlertoll_default_settings() {
  *
  * @return array<string,string>
  */
+/**
+ * Settlement rails we ACTUALLY settle on (2026-08-29 pruning): the v1 list
+ * advertised TollBit/Skyfire/Cloudflare PPC/context-license as "rails", but
+ * selecting them only changed two header labels — no integration existed, and
+ * listing competitors as rails in our own product was both misleading and
+ * strategically backwards. What remains is what the registry can settle:
+ * x402 (live, real Base Sepolia payments verified 2026-08-28), Stripe ACP
+ * (cards/Apple Pay/Google Pay), or the publisher's own payment URL.
+ * context-license.json is DISCOVERY, not settlement — it stays served
+ * automatically at /.well-known/context-license.json (see Settings).
+ *
+ * @return array<string,string> Rail key => admin label.
+ */
 function crawlertoll_rail_options() {
 	return array(
-		'x402'            => 'x402 — Coinbase + LF stablecoin rail',
-		'tollbit'         => 'TollBit hosted paywall',
-		'skyfire'         => 'Skyfire KYAPay token',
-		'cloudflare-ppc'  => 'Cloudflare Pay Per Crawl',
-		'stripe-acp'      => 'Stripe Agentic Commerce Protocol',
-		'context-license' => 'Per /.well-known/context-license.json',
-		'custom'          => 'Custom',
+		'x402'       => 'x402 — crypto stablecoin (Coinbase protocol)',
+		'stripe-acp' => 'Stripe — cards, Apple Pay, Google Pay',
+		'custom'     => 'Custom payment URL',
 	);
 }
 
@@ -287,7 +296,15 @@ function crawlertoll_get_settings() {
 	if ( ! is_array( $saved ) ) {
 		$saved = array();
 	}
-	return array_merge( crawlertoll_default_settings(), $saved );
+	$settings = array_merge( crawlertoll_default_settings(), $saved );
+	// 2026-08-29 rail pruning: a stored rail we no longer settle (tollbit,
+	// skyfire, cloudflare-ppc, context-license — label-only v1 stubs) degrades
+	// to 'custom' (label-only behavior preserved), never silently to a live
+	// money rail like x402.
+	if ( isset( $settings['rail'] ) && ! array_key_exists( (string) $settings['rail'], crawlertoll_rail_options() ) ) {
+		$settings['rail'] = 'custom';
+	}
+	return $settings;
 }
 
 register_activation_hook(
