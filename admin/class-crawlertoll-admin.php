@@ -387,7 +387,30 @@ class CrawlerToll_Admin {
 		echo '<div style="border:1px solid #e2e8f0;border-radius:10px;padding:20px;max-width:720px;background:#fff;">';
 		echo $html; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- see note above.
 		echo '</div>';
-		echo '<p style="color:#64748b;font-size:12px;margin-top:8px;">' . esc_html__( 'On the live page, the lock region mounts the interactive unlock app (payment + free reads). This preview is the static frame.', 'crawlertoll' ) . '</p>';
+
+		// Live preview (Chris QA 2026-08-29): mount the REAL unlock app into the
+		// lock region when a seal exists — the wall the publisher sees is the wall
+		// readers get, meter tile and rails included. Footer-enqueued; WP prints
+		// admin footer scripts after the page body, so this late enqueue is safe.
+		$has_seal = is_array( get_post_meta( $selected, CrawlerToll_Premium_Gate::SEAL_META, true ) );
+		if ( $has_seal && CrawlerToll_Vite::enqueue( 'unlock', 'crawlertoll-unlock-app' ) ) {
+			$settings = crawlertoll_get_settings();
+			$base     = defined( 'CRAWLERTOLL_REGISTRY_URL' ) ? CRAWLERTOLL_REGISTRY_URL : CrawlerToll_Registry::REGISTRY_URL;
+			wp_add_inline_script(
+				'crawlertoll-unlock-app',
+				'window.crawlertollUnlock = ' . wp_json_encode(
+					array(
+						'registryBase'         => esc_url_raw( $base ),
+						'stripePublishableKey' => isset( $settings['stripe_publishable_key'] ) ? (string) $settings['stripe_publishable_key'] : '',
+						'currency'             => isset( $settings['currency'] ) ? (string) $settings['currency'] : 'USD',
+					)
+				) . ';',
+				'before'
+			);
+			echo '<p style="color:#64748b;font-size:12px;margin-top:8px;">' . esc_html__( 'This is the live wall — the unlock app is running. Free reads or payments you make here are real (they use your visitor allowance / wallet).', 'crawlertoll' ) . '</p>';
+		} else {
+			echo '<p style="color:#64748b;font-size:12px;margin-top:8px;">' . esc_html__( 'Static frame only: this post has not been sealed yet. View it once on the frontend (or in a private window) to seal it, then this preview becomes the live, clickable wall.', 'crawlertoll' ) . '</p>';
+		}
 	}
 
 	/**

@@ -488,8 +488,9 @@ class CrawlerToll_Premium_Gate {
 	 * Admin "Wall preview" (access-tiers spec §5.2): render what a READER sees —
 	 * preview + lock markup — for a premium post, WITHOUT the admin's editor
 	 * privileges getting in the way and WITHOUT sealing/registering as a side
-	 * effect (no blob embed; the interactive unlock app only loads on the real
-	 * frontend page). Admin-only callers (the Wall preview tab).
+	 * effect. When a seal already exists in post meta, its blob is embedded so
+	 * the Wall preview tab can mount the live unlock app (Chris QA 2026-08-29:
+	 * "no live preview"); an unsealed post still renders the static frame.
 	 *
 	 * @param int $post_id
 	 * @return string HTML (preview + static lock markup).
@@ -511,6 +512,14 @@ class CrawlerToll_Premium_Gate {
 		$html .= ' data-rail="' . esc_attr( $settings['rail'] ) . '">';
 		$html .= '<p>' . esc_html__( 'The rest of this content is available with a one-time unlock.', 'crawlertoll' ) . '</p>';
 		$html .= '</div>';
+		// Live preview (Chris QA 2026-08-29): if a seal already exists, embed its
+		// blob so the unlock app mounted by the Wall preview tab can actually run
+		// (meter tile, rails, decrypt). Reading existing meta only — still no
+		// sealing/registration side effect from the admin.
+		$cached = get_post_meta( $post_id, self::SEAL_META, true );
+		if ( is_array( $cached ) && ! empty( $cached['blob'] ) ) {
+			$html .= '<script type="application/ct-sealed+json">' . wp_json_encode( $cached['blob'] ) . "</script>\n"; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+		}
 		return $html;
 	}
 
