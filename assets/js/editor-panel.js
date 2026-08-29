@@ -462,12 +462,18 @@
 					var t = e.currentTarget;
 					t.setPointerCapture && t.setPointerCapture( e.pointerId );
 					var sibs = topLevelSiblings( t );
-					var rect = { left: 0, width: window.innerWidth };
+					// The block editor canvas is an IFRAME in modern WP: pointer
+					// clientY is iframe-viewport-relative, so the ghost must render
+					// into the SAME document or it is offset by the iframe's page
+					// position (Chris QA 2026-08-29: "now it is above").
+					var doc = t.ownerDocument || document;
+					var win = doc.defaultView || window;
+					var rect = { left: 0, width: win.innerWidth };
 					if ( sibs.length && sibs[ 0 ].parentElement ) {
 						var pr = sibs[ 0 ].parentElement.getBoundingClientRect();
 						rect = { left: pr.left, width: pr.width };
 					}
-					setDrag( { y: e.clientY, idx: sealedFrom, left: rect.left, width: rect.width } );
+					setDrag( { y: e.clientY, idx: sealedFrom, left: rect.left, width: rect.width, doc: doc } );
 				}
 				function onMarkerMove( e ) {
 					if ( ! drag ) {
@@ -478,6 +484,7 @@
 						idx: candidateFromY( e.clientY, topLevelSiblings( e.currentTarget ) ),
 						left: drag.left,
 						width: drag.width,
+						doc: drag.doc,
 					} );
 				}
 				function onMarkerUp( e ) {
@@ -533,7 +540,7 @@
 							el( 'span', { style: vizStyles.ghostTag }, '✂ ' + __( 'cut after block ', 'crawlertoll' ) + drag.idx ),
 							el( 'span', { style: vizStyles.ghostLine } )
 						),
-						document.body
+						( drag.doc || document ).body
 					);
 				}
 
