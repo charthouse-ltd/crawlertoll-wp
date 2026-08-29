@@ -53,9 +53,15 @@ ck( strpos( $panels, 'onKeyDown' ) !== false, 'keyboard adjustment (accessibilit
 ck( strpos( $panels, 'currentTarget' ) !== false, 'drag pointer capture on the divider itself (not a child)' );
 ck( strpos( $panels, 'displayCut' ) !== false, 'bar always rendered (auto mode shows dashed bar, never vanishes)' );
 ck( strpos( $panels, 'createPortal' ) !== false && strpos( $panels, 'registerPlugin' ) !== false, 'in-canvas visualization = single overlay portaled into the editor iframe' );
-ck( strpos( $panels, 'editor.BlockEdit' ) === false, 'no per-block filter wrappers (desync class eliminated)' );
+ck( strpos( $panels, 'Chrome-only filter' ) !== false && strpos( $panels, 'wp.element.Fragment' ) !== false, 'editor.BlockEdit filter is chrome-only (Fragment, no DOM wrapper — desync class stays eliminated)' );
 ck( strpos( $panels, 'fadeVeil' ) !== false && strpos( $panels, 'veil' ) !== false, 'sealed veil + fade veil overlays implemented' );
 ck( strpos( $panels, 'ghostLine' ) !== false, 'in-canvas drag shows a live ghost line' );
+// D2 — "✂ Cut here" cursor-split (spec amendment §5.2, 2026-08-29): toolbar
+// button splits the current block at the cursor, cut lands mid-sentence.
+ck( strpos( $panels, 'BlockControls' ) !== false && strpos( $panels, 'splitBlockAtCursor' ) !== false, 'cut-here toolbar button wired (BlockControls + splitBlockAtCursor)' );
+ck( strpos( $panels, 'wp.richText.slice' ) !== false && strpos( $panels, 'replaceBlocks' ) !== false, 'cursor split slices rich text and replaces the block in place' );
+ck( strpos( $panels, 'Place paywall cut at cursor' ) !== false, 'toolbar button labeled' );
+ck( strpos( $cut, "'wp-hooks'" ) !== false && strpos( $cut, "'wp-rich-text'" ) !== false && strpos( $cut, "'wp-block-editor'" ) !== false, 'enqueue deps cover hooks/compose/rich-text/block-editor' );
 ck( strpos( $gate, 'crawlertoll-fade-preview' ) !== false, 'front-end preview fades into the wall' );
 $unlocksrc = (string) file_get_contents( $dir . '/ui/src/unlock/App.tsx' );
 ck( strpos( $unlocksrc, 'crawlertoll-fade-preview' ) !== false, 'unlock app strips the preview fade after unlock' );

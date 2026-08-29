@@ -390,6 +390,100 @@
 	}
 
 	wp.plugins.registerPlugin( 'crawlertoll-cut', { render: CutPanel, icon: 'lock' } );
+
+	// ── "✂ Cut here" block toolbar: split a block at the cursor ───────────
+	// Spec amendment §5.2 (2026-08-29): the publisher wants the cut at ANY
+	// text point, not only block boundaries ("you want to cut at an
+	// interesting/decisive part and that could be anywhere"). The server
+	// model stays block-indexed — we split the current paragraph/heading at
+	// the cursor into two blocks and place the cut between them, so a
+	// mid-sentence cut needs ZERO server changes. Chrome-only filter
+	// (Fragment + BlockControls, no DOM wrapper), so it cannot disturb
+	// layout or trigger the remount desync the veils once hit.
+	if ( wp.hooks && wp.compose && wp.blocks && wp.richText && wp.blockEditor ) {
+		var SPLITTABLE = { 'core/paragraph': 'content', 'core/heading': 'content' };
+
+		function splitBlockAtCursor( clientId ) {
+			var beSel = wp.data.select( 'core/block-editor' );
+			var beDisp = wp.data.dispatch( 'core/block-editor' );
+			var block = beSel.getBlock( clientId );
+			if ( ! block || ! SPLITTABLE[ block.name ] ) {
+				return;
+			}
+			var attrKey = SPLITTABLE[ block.name ];
+			var selStart = beSel.getSelectionStart ? beSel.getSelectionStart() : null;
+			var offset = ( selStart && selStart.clientId === clientId && typeof selStart.offset === 'number' )
+				? selStart.offset
+				: null;
+			// Modern Gutenberg keeps rich-text attributes as RichText VALUE
+			// objects in memory (not HTML strings) — accept both shapes.
+			var raw = block.attributes[ attrKey ];
+			var value = ( raw && typeof raw === 'object' && typeof raw.text === 'string' )
+				? raw
+				: wp.richText.create( { html: typeof raw === 'string' ? raw : '' } );
+			var len = value.text.length;
+
+			// Cursor at the very start/end (or not in this block): no split
+			// needed — just put the cut right after this block.
+			if ( offset === null || offset <= 0 || offset >= len ) {
+				var afterIdx = beSel.getBlockIndex( clientId );
+				wp.data.dispatch( 'core/editor' ).editPost( { meta: { _crawlertoll_cut: afterIdx + 1 } } );
+				return;
+			}
+
+			var first = wp.richText.toHTMLString( { value: wp.richText.slice( value, 0, offset ) } );
+			var second = wp.richText.toHTMLString( { value: wp.richText.slice( value, offset, len ) } );
+			var attrsA = Object.assign( {}, block.attributes );
+			var attrsB = Object.assign( {}, block.attributes );
+			attrsA[ attrKey ] = first;
+			attrsB[ attrKey ] = second;
+			var a = wp.blocks.createBlock( block.name, attrsA );
+			var b = wp.blocks.createBlock( block.name, attrsB );
+			beDisp.replaceBlocks( clientId, [ a, b ] );
+			var idx = wp.data.select( 'core/block-editor' ).getBlockIndex( a.clientId );
+			wp.data.dispatch( 'core/editor' ).editPost( { meta: { _crawlertoll_cut: ( idx >= 0 ? idx : 0 ) + 1 } } );
+			// Caret to the start of the sealed half — visible proof the split
+			// landed where the cursor was.
+			if ( beDisp.selectionChange ) {
+				beDisp.selectionChange( b.clientId, attrKey, 0, 0 );
+			}
+		}
+
+		var withCutHereButton = wp.compose.createHigherOrderComponent( function ( BlockEdit ) {
+			return function ( props ) {
+				var children = [ el( BlockEdit, Object.assign( { key: 'edit' }, props ) ) ];
+				if (
+					props &&
+					SPLITTABLE[ props.name ] &&
+					props.isSelected &&
+					! wp.data.select( 'core/block-editor' ).getBlockRootClientId( props.clientId ) &&
+					( ( wp.data.select( 'core/editor' ).getEditedPostAttribute( 'meta' ) || {} )._crawlertoll_premium )
+				) {
+					children.push(
+						el(
+							wp.blockEditor.BlockControls,
+							{ key: 'cut-here', group: 'other' },
+							el(
+								wp.components.ToolbarGroup,
+								null,
+								el( wp.components.ToolbarButton, {
+									icon: 'editor-cut',
+									label: __( 'Place paywall cut at cursor', 'crawlertoll' ),
+									onClick: function () {
+										splitBlockAtCursor( props.clientId );
+									},
+								} )
+							)
+						)
+					);
+				}
+				return el( wp.element.Fragment, null, children );
+			};
+		}, 'withCutHereButton' );
+
+		wp.hooks.addFilter( 'editor.BlockEdit', 'crawlertoll/cut-here', withCutHereButton );
+	}
+
 	// ── In-canvas cut visualization (overlay architecture) ─────────────────
 	// ONE plugin component renders ALL canvas chrome — the draggable cut
 	// marker, the sealed-veil over sealed blocks, the fade over the last free
