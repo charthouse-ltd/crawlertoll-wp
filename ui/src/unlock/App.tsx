@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { fetchOffer, hasStripeKey, hasWallet, meterTokenStore, redeemMeter, UnlockError } from "./api";
+import { fetchOffer, hasStripeKey, hasWallet, meterTokenStore, redeemMeter, renewPass, UnlockError } from "./api";
+import type { SettlementPass } from "./api";
 import { offerToRails, type RailTile, type SignedOffer } from "./offer";
 import { payX402, startStripe } from "./payments";
+import type { PaidRelease } from "./payments";
 import { sanitizeBody } from "./sanitize";
 import { unseal, InsecureContextError, type SealedBlob } from "./unseal";
 
@@ -15,16 +17,34 @@ type State = "idle" | "loading" | "menu" | "stripe" | "processing" | "unlocked" 
 // not widen the XSS surface beyond what a successful unlock exposes. The CEK
 // is never transmitted anywhere by this code.
 const CEK_PREFIX = "ct:cek:";
-function cekGet(contentId: string): string | null {
+// A1 cache entry: the CEK plus the settlement pass it was released with.
+// `e` (expires_at) is null/absent for no-expiry access — the common case
+// until duration tiers (A2) set it. Legacy plain-string entries (pre-A1)
+// still read back as a bare CEK.
+interface CekEntry {
+  c: string;
+  p?: string; // settlement pass_id (renewal proof)
+  e?: string | null; // ISO expiry of THIS cache entry; null = no expiry
+}
+function cekRead(contentId: string): CekEntry | null {
   try {
-    return window.localStorage?.getItem(CEK_PREFIX + contentId) ?? null;
+    const raw = window.localStorage?.getItem(CEK_PREFIX + contentId);
+    if (!raw) {
+      return null;
+    }
+    if (raw.startsWith("{")) {
+      const parsed = JSON.parse(raw) as CekEntry;
+      return parsed && typeof parsed.c === "string" ? parsed : null;
+    }
+    return { c: raw }; // legacy plain-CEK entry
   } catch {
     return null; // storage blocked (private mode) — pay flow still works
   }
 }
-function cekSet(contentId: string, cek: string): void {
+function cekSet(contentId: string, cek: string, pass?: SettlementPass): void {
   try {
-    window.localStorage?.setItem(CEK_PREFIX + contentId, cek);
+    const entry: CekEntry = pass ? { c: cek, p: pass.pass_id, e: pass.expires_at } : { c: cek };
+    window.localStorage?.setItem(CEK_PREFIX + contentId, JSON.stringify(entry));
   } catch {
     /* storage blocked — session-only unlock, acceptable degradation */
   }
@@ -71,11 +91,12 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
   const [error, setError] = useState("");
   const [bodyHtml, setBodyHtml] = useState("");
   const [walletHint, setWalletHint] = useState(false);
+  const [renewing, setRenewing] = useState(false);
   const [stripePass, setStripePass] = useState("");
   const [expressUp, setExpressUp] = useState(false);
   const stripeNode = useRef<HTMLDivElement>(null);
   const stripeExpressNode = useRef<HTMLDivElement>(null);
-  const stripeConfirm = useRef<null | (() => Promise<string>)>(null);
+  const stripeConfirm = useRef<null | (() => Promise<PaidRelease>)>(null);
 
   const fail = (e: unknown) => {
     setError(e instanceof UnlockError ? e.message : "Something went wrong.");
@@ -133,7 +154,7 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
     });
   }, [state]);
 
-  const reveal = async (cek: string, fromCache = false) => {
+  const reveal = async (cek: string, fromCache = false, pass?: SettlementPass) => {
     if (!blob) {
       return;
     }
@@ -141,8 +162,9 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
       // Persist at RELEASE time, before decrypt: the registry only reaches this
       // point after a verified settlement, so a local failure afterwards (plain
       // HTTP, tab crash) must never force a second payment — the retry unlocks
-      // from this cache.
-      cekSet(contentId, cek);
+      // from this cache. The settlement pass rides along (A1): it is the
+      // re-access proof when this cache entry expires or partially survives.
+      cekSet(contentId, cek, pass);
     }
     try {
       setBodyHtml(sanitizeBody(await unseal(blob, cek)));
@@ -165,15 +187,42 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
     }
   };
 
+  // A1: silent renewal. The cache entry expired (duration-limited access) but
+  // the settlement pass may still be valid — re-present it for a fresh CEK,
+  // no new payment. On pass_expired the wall returns (it IS the renew path:
+  // the reader simply pays again — A3 adds the explicit "access ended" copy).
+  const renewWithPass = async (passId: string) => {
+    setRenewing(true);
+    setState("processing");
+    try {
+      const r = await renewPass(contentId, passId);
+      await reveal(r.cek, false, r.pass ?? { pass_id: passId, expires_at: null });
+    } catch {
+      cekClear(contentId);
+      setState("idle");
+    } finally {
+      setRenewing(false);
+    }
+  };
+
   // Returning reader: a previously released CEK unlocks instantly, no payment.
+  // An EXPIRED cache entry tries the silent pass renewal before giving up.
   useEffect(() => {
     if (!ready) {
       return;
     }
-    const cached = cekGet(contentId);
-    if (cached) {
-      void reveal(cached, true);
+    const cached = cekRead(contentId);
+    if (!cached) {
+      return;
     }
+    if (cached.e && Date.now() > Date.parse(cached.e)) {
+      cekClear(contentId); // the dead CEK is worthless…
+      if (cached.p) {
+        void renewWithPass(cached.p); // …but the pass may still be valid
+      }
+      return;
+    }
+    void reveal(cached.c, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -232,7 +281,8 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
       setWalletHint(false);
       const hintTimer = window.setTimeout(() => setWalletHint(true), 2500);
       try {
-        await reveal(await payX402(contentId, offer));
+        const r = await payX402(contentId, offer);
+        await reveal(r.cek, false, r.pass);
       } catch (e) {
         fail(e);
       } finally {
@@ -255,9 +305,9 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
       stripePass,
       stripeNode.current,
       stripeExpressNode.current,
-      async (cek) => {
+      async (res) => {
         if (!cancelled) {
-          await reveal(cek);
+          await reveal(res.cek, false, res.pass);
         }
       },
       (message) => {
@@ -294,7 +344,8 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
     }
     setState("processing");
     try {
-      await reveal(await stripeConfirm.current());
+      const r = await stripeConfirm.current();
+      await reveal(r.cek, false, r.pass);
     } catch (e) {
       fail(e);
     }
@@ -367,7 +418,9 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
         )
       ) : state === "loading" || state === "processing" ? (
         <>
-          <p style={{ fontSize: 14, color: "var(--ct-muted)" }}>{state === "processing" ? "Confirming payment…" : "Loading…"}</p>
+          <p style={{ fontSize: 14, color: "var(--ct-muted)" }}>
+            {state === "processing" ? (renewing ? "Restoring your access…" : "Confirming payment…") : "Loading…"}
+          </p>
           {state === "processing" && walletHint ? (
             <p style={{ fontSize: 13, color: "var(--ct-muted)", marginTop: 6 }}>
               Waiting for your wallet — it may be locked or holding a confirmation. Check MetaMask to continue.

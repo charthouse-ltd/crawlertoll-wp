@@ -4,7 +4,15 @@
 // domain. No-MoR: the buyer pays the publisher directly; we only read {cek}.
 
 import { createStripeIntent, redeemStripe, redeemX402, unlockConfig, UnlockError } from "./api";
+import type { SettlementPass } from "./api";
 import type { SignedOffer } from "./offer";
+
+// A1: a fresh paid release carries the settlement pass alongside the CEK so the
+// caller can cache both (renewal proof, spec access-tiers-v1.md §4.1).
+export interface PaidRelease {
+  cek: string;
+  pass?: SettlementPass;
+}
 
 interface StripeLike {
   elements: (opts: { clientSecret: string }) => StripeElements;
@@ -58,10 +66,10 @@ export async function startStripe(
   passId: string,
   mountNode: HTMLElement,
   expressNode?: HTMLElement | null,
-  onExpressPaid?: (cek: string) => void | Promise<void>,
+  onExpressPaid?: (res: PaidRelease) => void | Promise<void>,
   onExpressError?: (message: string) => void,
   onExpressReady?: (available: boolean) => void,
-): Promise<() => Promise<string>> {
+): Promise<() => Promise<PaidRelease>> {
   if (!window.Stripe) {
     await loadStripeJs();
   }
@@ -95,8 +103,8 @@ export async function startStripe(
           if (result.error) {
             throw new UnlockError(result.error.message || "Payment was declined.", "stripe_confirm");
           }
-          const { cek } = await redeemStripe(contentId, passId, intent_id);
-          await onExpressPaid(cek);
+          const res = await redeemStripe(contentId, passId, intent_id);
+          await onExpressPaid({ cek: res.cek, pass: res.pass });
         } catch (e) {
           // Tell the wallet sheet the attempt failed, then surface the reason.
           ev.paymentFailed?.({ reason: "fail" });
@@ -112,8 +120,8 @@ export async function startStripe(
     if (result.error) {
       throw new UnlockError(result.error.message || "Card was declined.", "stripe_confirm");
     }
-    const { cek } = await redeemStripe(contentId, passId, intent_id);
-    return cek;
+    const res = await redeemStripe(contentId, passId, intent_id);
+    return { cek: res.cek, pass: res.pass };
   };
 }
 
@@ -168,7 +176,7 @@ async function ensureChain(domain: { chainId: number }): Promise<void> {
  * redeem with an X-PAYMENT header. Requires the offer to carry the token domain
  * (chainId/verifyingContract/name/version) — surfaced as a clear error if absent.
  */
-export async function payX402(contentId: string, offer: SignedOffer): Promise<string> {
+export async function payX402(contentId: string, offer: SignedOffer): Promise<PaidRelease> {
   const x = offer.x402;
   if (!x || !x.payTo) {
     throw new UnlockError("USDC unlock is unavailable.", "x402_unavailable");
@@ -271,6 +279,6 @@ export async function payX402(contentId: string, offer: SignedOffer): Promise<st
           },
     ),
   );
-  const { cek } = await redeemX402(contentId, xPayment, version);
-  return cek;
+  const res = await redeemX402(contentId, xPayment, version);
+  return { cek: res.cek, pass: res.pass };
 }

@@ -95,9 +95,19 @@ export async function fetchOffer(contentId: string): Promise<SignedOffer> {
   throw new UnlockError("Could not load unlock options.", `offer_${res.status}`);
 }
 
+// A1 (spec access-tiers-v1.md §4.1): the registry mints a settlement pass on
+// every paid redemption and returns it alongside the CEK. The client caches it
+// with the CEK — it is the reader's re-access proof after the cache expires
+// (duration tiers, A2) or survives partial storage clears (M1 multi-storage).
+export interface SettlementPass {
+  pass_id: string;
+  expires_at: string | null; // null = "no expiry" (the honest label, spec §7)
+}
+
 interface KeyResponse {
   cek: string;
   capability?: unknown;
+  pass?: SettlementPass;
 }
 
 async function postKey(contentId: string, body: Record<string, unknown>, headers: Record<string, string> = {}): Promise<KeyResponse> {
@@ -149,4 +159,30 @@ export function redeemX402(contentId: string, xPayment: string, version: 1 | 2 =
 /** Meter: redeem a free read against the reader's meter token (no payment). */
 export function redeemMeter(contentId: string, meterToken: unknown): Promise<KeyResponse> {
   return postKey(contentId, { rail: "meter", meter_token: meterToken });
+}
+
+/**
+ * A1: silent renewal — re-present an unexpired settlement pass for a fresh CEK,
+ * no new payment. The registry resolves the pass server-side (rail recorded at
+ * mint), so we send only the pass_id. An expired pass comes back 402 with
+ * `pass_expired: true` — mapped to a distinct code so the UI can show the
+ * renew flow instead of a generic failure.
+ */
+export async function renewPass(contentId: string, passId: string): Promise<KeyResponse> {
+  const res = await safeFetch(keyUrl(contentId), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ pass_id: passId }),
+  });
+  if (res.status === 200) {
+    return (await res.json()) as KeyResponse;
+  }
+  if (res.status === 402) {
+    const body = (await res.json().catch(() => ({}))) as { pass_expired?: boolean };
+    if (body.pass_expired) {
+      throw new UnlockError("Your access to this article has ended.", "pass_expired");
+    }
+    throw new UnlockError("Your saved access could not be renewed.", "renew_rejected");
+  }
+  throw new UnlockError("Could not renew your access.", `renew_${res.status}`);
 }
