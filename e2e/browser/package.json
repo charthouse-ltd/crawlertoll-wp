@@ -1,0 +1,6 @@
+{
+  "name": "crawlertoll-wp-browser-e2e",
+  "private": true,
+  "description": "Playwright browser e2e for the CrawlerToll WP plugin (real mouse drags on the demo editor). Run: npm install && node drag-e2e.js",
+  "dependencies": { "playwright": "^1.49.0" }
+}

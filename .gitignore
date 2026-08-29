@@ -11,3 +11,4 @@ vendor/
 *.zip
 .gstack/
 build/
+e2e/browser/node_modules/
