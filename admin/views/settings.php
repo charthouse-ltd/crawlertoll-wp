@@ -250,6 +250,44 @@ $site_url = home_url();
 		</details>
 	</div>
 
+	<!-- Wall text (access-tiers spec §5.4, A3): publisher-editable wall copy. -->
+	<div class="ct-card">
+		<h2>
+			<span class="dashicons dashicons-edit"></span>
+			<?php esc_html_e( 'Wall text', 'crawlertoll' ); ?>
+		</h2>
+		<p class="ct-card-desc">
+			<?php esc_html_e( 'The exact words readers see on the paywall. Leave a field empty to keep the default. Plain text only, up to 300 characters.', 'crawlertoll' ); ?>
+			<?php esc_html_e( 'You can use placeholders: {price}, {currency}, {count}, {window_days}, {remaining}, {site_name} — they are filled in for each reader. A placeholder we cannot fill removes the whole custom line and falls back to the default, so readers never see a raw "{…}".', 'crawlertoll' ); ?>
+		</p>
+		<?php
+		$ct_wall_defaults = CrawlerToll_Wall_Copy::defaults();
+		$ct_wall_current  = isset( $settings['wall_text'] ) && is_array( $settings['wall_text'] ) ? $settings['wall_text'] : array();
+		$ct_wall_fields   = array(
+			'heading'     => __( 'Lock heading', 'crawlertoll' ),
+			'value_line'  => __( 'Value line (supports {price})', 'crawlertoll' ),
+			'meter_out'   => __( 'Free-reads-used-up note (supports {count}, {window_days})', 'crawlertoll' ),
+			'unavailable' => __( 'Static lock-region sentence', 'crawlertoll' ),
+		);
+		foreach ( $ct_wall_fields as $ct_wall_key => $ct_wall_label ) :
+			$ct_wall_val = isset( $ct_wall_current[ $ct_wall_key ] ) ? $ct_wall_current[ $ct_wall_key ] : '';
+			?>
+			<p style="margin:12px 0 4px;"><label for="ct-wall-<?php echo esc_attr( $ct_wall_key ); ?>" style="font-weight:600;font-size:13px;"><?php echo esc_html( $ct_wall_label ); ?></label></p>
+			<input
+				type="text"
+				id="ct-wall-<?php echo esc_attr( $ct_wall_key ); ?>"
+				name="<?php echo esc_attr( CRAWLERTOLL_OPTION_KEY ); ?>[wall_text][<?php echo esc_attr( $ct_wall_key ); ?>]"
+				value="<?php echo esc_attr( $ct_wall_val ); ?>"
+				placeholder="<?php echo esc_attr( $ct_wall_defaults[ $ct_wall_key ] ); ?>"
+				maxlength="300"
+				class="large-text"
+			/>
+		<?php endforeach; ?>
+		<p class="ct-card-desc" style="margin-top:10px;">
+			<?php esc_html_e( 'Per article (Pro): the editor sidebar has a "Wall text" field that overrides the value line for that article only.', 'crawlertoll' ); ?>
+		</p>
+	</div>
+
 	<!-- Curl tester -->
 	<div class="ct-card">
 		<h2>

@@ -215,6 +215,12 @@ class CrawlerToll_Admin {
 		$out['terms_url']           = isset( $input['terms_url'] ) ? esc_url_raw( trim( $input['terms_url'] ) ) : '';
 		$out['context_license_url'] = isset( $input['context_license_url'] ) ? esc_url_raw( trim( $input['context_license_url'] ) ) : '';
 		$out['policy']              = isset( $input['policy'] ) ? sanitize_textarea_field( wp_unslash( $input['policy'] ) ) : $defaults['policy'];
+		// Wall copy (access-tiers spec §5.4, A3): publisher-editable wall templates.
+		// Known keys only, plain text, ≤300 chars; stored overrides merge over the
+		// shipped defaults at resolve time.
+		if ( isset( $input['wall_text'] ) ) {
+			$out['wall_text'] = CrawlerToll_Wall_Copy::sanitize( $input['wall_text'] );
+		}
 		$out['remove_data_on_uninstall'] = ! empty( $input['remove_data_on_uninstall'] );
 
 		return $out;

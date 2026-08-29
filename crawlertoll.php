@@ -92,6 +92,8 @@ require_once CRAWLERTOLL_PLUGIN_DIR . 'includes/class-crawlertoll-sealed.php';
 require_once CRAWLERTOLL_PLUGIN_DIR . 'includes/class-crawlertoll-registry.php';
 require_once CRAWLERTOLL_PLUGIN_DIR . 'includes/class-crawlertoll-meter.php';
 require_once CRAWLERTOLL_PLUGIN_DIR . 'includes/class-crawlertoll-tiers.php';
+// Publisher-editable wall copy (access-tiers spec §5.4, A3) — free-safe.
+require_once CRAWLERTOLL_PLUGIN_DIR . 'includes/class-crawlertoll-wall-copy.php';
 require_once CRAWLERTOLL_PLUGIN_DIR . 'includes/class-crawlertoll-sealed-gate.php';
 require_once CRAWLERTOLL_PLUGIN_DIR . 'includes/class-crawlertoll-premium-gate.php';
 // Pro classes. These files are STRIPPED from the free wp.org build (see build.sh),
@@ -135,6 +137,9 @@ function crawlertoll_bootstrap() {
 	// Visual cut bar (access-tiers spec §5.2): cut meta + editor surfaces.
 	// Free-safe — publishers on the free tier set their cut too.
 	CrawlerToll_Cut::register_hooks();
+
+	// Wall copy (access-tiers spec §5.4, A3): per-article override meta.
+	add_action( 'init', array( 'CrawlerToll_Wall_Copy', 'register_meta' ) );
 
 	// Pro features — registered ONLY for an active license (Freemius-backed).
 	// is_pro_active() is false on free installs, so the alert + catalogue crons

@@ -512,14 +512,20 @@ class CrawlerToll_Premium_Gate {
 		$settings = crawlertoll_get_settings();
 		$host     = wp_parse_url( home_url(), PHP_URL_HOST );
 		$cid      = CrawlerToll_Sealed_Gate::build_content_id( $host, $post_id );
+		$wall     = CrawlerToll_Wall_Copy::resolve( $post_id, $settings ); // A3 (spec §5.4)
 
 		$html  = $this->preview_html( $post_id );
 		$html .= '<div class="' . esc_attr( self::MARKER_CLASS ) . ' crawlertoll-locked"';
 		$html .= ' data-content-id="' . esc_attr( $cid ) . '"';
 		$html .= ' data-price-micros="' . esc_attr( (string) (int) $settings['price_micros'] ) . '"';
 		$html .= ' data-currency="' . esc_attr( $settings['currency'] ) . '"';
+		$html .= ' data-site-name="' . esc_attr( get_bloginfo( 'name' ) ) . '"';
+		$html .= ' data-wall-heading="' . esc_attr( $wall['heading'] ) . '"';
+		$html .= ' data-wall-value="' . esc_attr( $wall['value_line'] ) . '"';
+		$html .= ' data-wall-meter-out="' . esc_attr( $wall['meter_out'] ) . '"';
+		$html .= ' data-wall-unavailable="' . esc_attr( $wall['unavailable'] ) . '"';
 		$html .= ' data-rail="' . esc_attr( $settings['rail'] ) . '">';
-		$html .= '<p>' . esc_html__( 'The rest of this content is available with a one-time unlock.', 'crawlertoll' ) . '</p>';
+		$html .= '<p>' . esc_html( $wall['unavailable'] ) . '</p>';
 		$html .= '</div>';
 		// Live preview (Chris QA 2026-08-29): if a seal already exists, embed its
 		// blob so the unlock app mounted by the Wall preview tab can actually run
@@ -546,13 +552,19 @@ class CrawlerToll_Premium_Gate {
 		$settings = crawlertoll_get_settings();
 		$host     = wp_parse_url( home_url(), PHP_URL_HOST );
 		$cid      = CrawlerToll_Sealed_Gate::build_content_id( $host, $post_id );
+		$wall     = CrawlerToll_Wall_Copy::resolve( $post_id, $settings ); // A3 (spec §5.4)
 
 		$html  = '<div class="' . esc_attr( self::MARKER_CLASS ) . ' crawlertoll-locked"';
 		$html .= ' data-content-id="' . esc_attr( $cid ) . '"';
 		$html .= ' data-price-micros="' . esc_attr( (string) (int) $settings['price_micros'] ) . '"';
 		$html .= ' data-currency="' . esc_attr( $settings['currency'] ) . '"';
+		$html .= ' data-site-name="' . esc_attr( get_bloginfo( 'name' ) ) . '"';
+		$html .= ' data-wall-heading="' . esc_attr( $wall['heading'] ) . '"';
+		$html .= ' data-wall-value="' . esc_attr( $wall['value_line'] ) . '"';
+		$html .= ' data-wall-meter-out="' . esc_attr( $wall['meter_out'] ) . '"';
+		$html .= ' data-wall-unavailable="' . esc_attr( $wall['unavailable'] ) . '"';
 		$html .= ' data-rail="' . esc_attr( $settings['rail'] ) . '">';
-		$html .= '<p>' . esc_html__( 'The rest of this content is available with a one-time unlock.', 'crawlertoll' ) . '</p>';
+		$html .= '<p>' . esc_html( $wall['unavailable'] ) . '</p>';
 		$html .= '</div>';
 
 		$blob = $this->ensure_sealed( $post_id );

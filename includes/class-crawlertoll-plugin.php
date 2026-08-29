@@ -492,6 +492,12 @@ class CrawlerToll_Plugin {
 				'email'  => isset( $s['alert_email'] ) ? (string) $s['alert_email'] : '',
 			),
 			'retention_days' => isset( $s['retention_days'] ) ? (int) $s['retention_days'] : 90,
+			// Wall copy (A3, spec §5.4): stored overrides merged over the shipped
+			// defaults, so every client always sees all four templates.
+			'wall_text'      => array_merge(
+				CrawlerToll_Wall_Copy::defaults(),
+				isset( $s['wall_text'] ) && is_array( $s['wall_text'] ) ? $s['wall_text'] : array()
+			),
 			'meta'           => array(
 				'rail_options'   => crawlertoll_rail_options(),
 				'currencies'     => array( 'USD', 'USDC', 'EUR', 'GBP' ),

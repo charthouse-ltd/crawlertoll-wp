@@ -77,6 +77,28 @@ function fmtIdlePrice(micros: number, currency: string): string | null {
   return (sym[currency] ?? currency + " ") + str;
 }
 
+// A3 (spec §5.4): publisher-editable wall templates ride the mount as
+// data-wall-* attributes (plain text, kses-stripped server-side). Placeholders
+// substitute HERE — the client is the only place that knows {price}/{remaining}
+// for this reader. A placeholder with no value (unknown name, empty var)
+// degrades the WHOLE string to the built-in default: a raw "{…}" never
+// reaches the reader.
+function tpl(template: string | undefined, vars: Record<string, string>): string | null {
+  if (!template) {
+    return null;
+  }
+  let missing = false;
+  const out = template.replace(/\{([a-z_]+)\}/g, (m, name: string) => {
+    const v = vars[name];
+    if (v === undefined || v === "") {
+      missing = true;
+      return m;
+    }
+    return v;
+  });
+  return missing || /\{[a-z_]+\}/.test(out) ? null : out;
+}
+
 export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | null }) {
   const contentId = mount.dataset.contentId || blob?.content_id || "";
   const ready = !!blob && blob.magic === "ct_sealed_v1" && contentId !== "";
@@ -84,6 +106,19 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
     parseInt(mount.dataset.priceMicros || "0", 10),
     mount.dataset.currency || "USD",
   );
+
+  // A3: resolved wall templates (site settings + per-article override, merged
+  // server-side). Each falls back to the shipped copy when unset or when its
+  // placeholders can't all be substituted for this reader.
+  const siteVars: Record<string, string> = { site_name: mount.dataset.siteName || "" };
+  const wallHeading = tpl(mount.dataset.wallHeading, siteVars) || "Keep reading";
+  const wallValue = tpl(mount.dataset.wallValue, { ...siteVars, price: idlePrice || "", currency: mount.dataset.currency || "USD" });
+  const meterVars = (m: { count: number; window_days: number; remaining: number }): Record<string, string> => ({
+    ...siteVars,
+    count: String(m.count),
+    window_days: String(m.window_days),
+    remaining: String(m.remaining),
+  });
 
   const [state, setState] = useState<State>(ready ? "idle" : "unavailable");
   const [offer, setOffer] = useState<SignedOffer | null>(null);
@@ -392,7 +427,7 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
           ) : null}
           {offer?.meter && offer.meter.remaining > 0 ? (
           <>
-            <p style={{ fontSize: 15, fontWeight: 600 }}>Keep reading</p>
+            <p style={{ fontSize: 15, fontWeight: 600 }}>{wallHeading}</p>
             <p style={{ fontSize: 13, color: "var(--ct-muted)", margin: "4px 0 12px" }}>
               {offer.meter.remaining} of {offer.meter.count} free articles left in this {offer.meter.window_days}-day window.
             </p>
@@ -414,15 +449,17 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
           </>
         ) : (
           <>
-            <p style={{ fontSize: 15, fontWeight: 600 }}>Keep reading</p>
+            <p style={{ fontSize: 15, fontWeight: 600 }}>{wallHeading}</p>
             <p style={{ fontSize: 13, color: "var(--ct-muted)", margin: "4px 0 12px" }}>
-              {idlePrice
-                ? `Unlock the rest of this article for ${idlePrice} — one-time, no subscription.`
-                : "Unlock the rest of this article."}
+              {wallValue ||
+                (idlePrice
+                  ? `Unlock the rest of this article for ${idlePrice} — one-time, no subscription.`
+                  : "Unlock the rest of this article.")}
             </p>
             {offer?.meter && offer.meter.remaining <= 0 ? (
               <p style={{ fontSize: 12, color: "var(--ct-muted)", margin: "0 0 10px" }}>
-                You've read your {offer.meter.count} free article{offer.meter.count === 1 ? "" : "s"} for this {offer.meter.window_days}-day window.
+                {tpl(mount.dataset.wallMeterOut, meterVars(offer.meter)) ||
+                  `You've read your ${offer.meter.count} free article${offer.meter.count === 1 ? "" : "s"} for this ${offer.meter.window_days}-day window.`}
               </p>
             ) : null}
             <button type="button" onClick={() => loadMenu()} style={btn}>
@@ -472,7 +509,8 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
             ) : null}
             {offer?.meter && offer.meter.remaining <= 0 ? (
               <p style={{ fontSize: 12, color: "var(--ct-muted)", margin: "0 0 4px" }}>
-                You've read your {offer.meter.count} free article{offer.meter.count === 1 ? "" : "s"} for this {offer.meter.window_days}-day window — unlock to keep reading.
+                {tpl(mount.dataset.wallMeterOut, meterVars(offer.meter)) ||
+                  `You've read your ${offer.meter.count} free article${offer.meter.count === 1 ? "" : "s"} for this ${offer.meter.window_days}-day window — unlock to keep reading.`}
               </p>
             ) : null}
             {tiles.map((t) => (

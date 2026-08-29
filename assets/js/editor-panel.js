@@ -147,6 +147,7 @@
 			return {
 				isPremium: !! meta._crawlertoll_premium,
 				cut: typeof meta._crawlertoll_cut === 'number' ? meta._crawlertoll_cut : parseInt( meta._crawlertoll_cut, 10 ) || 0,
+				wallText: typeof meta._crawlertoll_wall_text === 'string' ? meta._crawlertoll_wall_text : '',
 				blocks: blocks,
 				classicUnits: units,
 			};
@@ -380,6 +381,29 @@
 					)
 				);
 			}
+		}
+
+		// A3 (spec §5.4): per-article wall-text override — Pro only, value line
+		// only. Hidden on free installs (window.crawlertollEditor.proActive is
+		// localized by CrawlerToll_Cut::enqueue_editor_panel) so the free panel
+		// never shows a field that silently does nothing.
+		if ( window.crawlertollEditor && window.crawlertollEditor.proActive ) {
+			children.push(
+				el( 'hr', { key: 'wall-hr', style: { margin: '12px 0 4px', border: 'none', borderTop: '1px solid #ddd' } } ),
+				el(
+					wp.components.TextareaControl,
+					{
+						key: 'wall-text',
+						label: __( 'Wall text (optional)', 'crawlertoll' ),
+						value: sel.wallText,
+						maxLength: 300,
+						onChange: function ( v ) {
+							editPost( { meta: { _crawlertoll_wall_text: v } } );
+						},
+						help: __( 'Overrides the site\'s wall value line for this article only. Plain text; {price} and {site_name} work here too.', 'crawlertoll' ),
+					}
+				)
+			);
 		}
 
 		return el(

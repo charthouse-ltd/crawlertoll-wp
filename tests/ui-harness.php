@@ -45,6 +45,7 @@ function render_settings() {
 	$recent_unlocks_error    = null;
 	$recent_unlocks_enrolled = false;
 	ob_start();
+	require __DIR__ . '/../includes/class-crawlertoll-wall-copy.php'; // A3 wall-copy defaults (settings view)
 	include __DIR__ . '/../admin/views/settings.php';
 	return ob_get_clean();
 }

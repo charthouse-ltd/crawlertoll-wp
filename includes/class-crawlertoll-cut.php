@@ -270,6 +270,13 @@ class CrawlerToll_Cut {
 			(string) filemtime( $asset ),
 			true
 		);
+		// A3 (spec §5.4): the per-article wall-text override is Pro-only — the
+		// panel hides the field on free installs instead of showing a dead stub.
+		wp_add_inline_script(
+			'crawlertoll-editor-panel',
+			'window.crawlertollEditor = { proActive: ' . ( CrawlerToll_Pro_Admin::is_pro_active() ? 'true' : 'false' ) . ' };',
+			'before'
+		);
 	}
 
 	/**
