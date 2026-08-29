@@ -385,7 +385,12 @@
 	// non-editable chrome, never post content.
 	if ( wp.hooks && wp.compose ) {
 		var vizStyles = {
-			marker: { display: 'flex', alignItems: 'center', gap: 8, margin: '2px 0 6px', userSelect: 'none', cursor: 'ns-resize', touchAction: 'none' },
+			// Marker is ABSOLUTE within the block wrapper (out of flow): it
+			// overlays the boundary edge and never consumes layout space.
+			// Forensics 2026-08-29: in-flow chrome shifted blocks between
+			// drag-time and post-drop geometry (ghost/drop mismatch).
+			marker: { position: 'absolute', top: -7, left: 0, right: 0, zIndex: 2, display: 'flex', alignItems: 'center', gap: 8, height: 14, margin: 0, userSelect: 'none', cursor: 'ns-resize', touchAction: 'none' },
+			markerBelow: { top: 'auto', bottom: -7 },
 			line: { flex: 1, borderTop: '2px dashed #b32d2e' },
 			tag: { fontSize: 11, fontWeight: 600, color: '#b32d2e', whiteSpace: 'nowrap', fontFamily: 'sans-serif' },
 			dim: { opacity: 0.42, filter: 'grayscale(0.35)' },
@@ -434,21 +439,52 @@
 				var isSealed = applicable && info.index >= sealedFrom;
 				var isLastFree = applicable && sealedFrom < info.total && info.index === sealedFrom - 1;
 
-				// Top-level block DOM siblings, found by climbing from our own
-				// block — no reliance on Gutenberg's internal class names.
-				function topLevelSiblings( node ) {
-					var own = node.closest ? node.closest( '[data-block]' ) : null;
-					if ( ! own || ! own.parentElement ) {
-						return [];
+				// Top-level block UNITS = the direct children of the layout root
+				// that are (or contain) a top-level block. CRITICAL: in modern
+				// Gutenberg there is NO outer block wrapper — the data-block
+				// attribute sits on the block's own element (the <p> itself),
+				// and OUR filter wrappers sit between the layout root and that
+				// element. So closest('[data-block]') from the marker finds
+				// nothing (live DOM inspection 2026-08-29: sibling search came
+				// back empty → every drag pinned to cut=1, ghost froze).
+				function layoutRoot( el ) {
+					var node = el;
+					while ( node && node.parentElement ) {
+						if ( /is-root-container/.test( ( node.parentElement.className || '' ).toString() ) ) {
+							return node.parentElement;
+						}
+						node = node.parentElement;
 					}
-					return Array.prototype.slice.call( own.parentElement.children ).filter( function ( c ) {
-						return c.hasAttribute && c.hasAttribute( 'data-block' );
+					return null;
+				}
+				function topLevelUnits( node ) {
+					var root = layoutRoot( node );
+					if ( root ) {
+						var units = [];
+						Array.prototype.forEach.call( root.children, function ( child ) {
+							if ( child.hasAttribute( 'data-block' ) || child.querySelector( '[data-block]' ) ) {
+								units.push( child );
+							}
+						} );
+						return units;
+					}
+					// Fallback: document-order top-level [data-block] elements.
+					var all = Array.prototype.slice.call( ( node.ownerDocument || document ).querySelectorAll( '[data-block]' ) );
+					return all.filter( function ( b ) {
+						var p = b.parentElement;
+						while ( p ) {
+							if ( p.hasAttribute && p.hasAttribute( 'data-block' ) ) {
+								return false;
+							}
+							p = p.parentElement;
+						}
+						return true;
 					} );
 				}
-				function candidateFromY( clientY, sibs ) {
+				function candidateFromY( clientY, units ) {
 					var idx = 1;
-					for ( var i = 0; i < sibs.length; i++ ) {
-						var r = sibs[ i ].getBoundingClientRect();
+					for ( var i = 0; i < units.length; i++ ) {
+						var r = units[ i ].getBoundingClientRect();
 						if ( clientY > r.top + r.height / 2 ) {
 							idx = i + 1;
 						}
@@ -456,50 +492,47 @@
 					if ( idx < 1 ) {
 						idx = 1;
 					}
-					if ( idx > info.total ) {
-						idx = info.total;
+					if ( idx > units.length ) {
+						idx = units.length;
 					}
 					return idx;
 				}
 				// The ghost SNAPS to block boundaries (not the raw cursor): the
 				// cut can only exist between blocks, so the preview must show
 				// the exact landing spot — what you see is what you drop.
-				function boundaryY( idx, sibs ) {
-					if ( ! sibs.length ) {
+				function boundaryY( idx, units ) {
+					if ( ! units.length ) {
 						return null;
 					}
-					if ( idx >= sibs.length ) {
-						return sibs[ sibs.length - 1 ].getBoundingClientRect().bottom;
+					if ( idx >= units.length ) {
+						return units[ units.length - 1 ].getBoundingClientRect().bottom;
 					}
-					return sibs[ idx ].getBoundingClientRect().top;
+					return units[ idx ].getBoundingClientRect().top;
 				}
 				function onMarkerDown( e ) {
 					e.preventDefault();
 					e.stopPropagation();
 					var t = e.currentTarget;
 					t.setPointerCapture && t.setPointerCapture( e.pointerId );
-					var sibs = topLevelSiblings( t );
+					var units = topLevelUnits( t );
 					// The block editor canvas is an IFRAME in modern WP: pointer
 					// clientY is iframe-viewport-relative, so the ghost must render
 					// into the SAME document or it is offset by the iframe's page
 					// position (Chris QA 2026-08-29: "now it is above").
 					var doc = t.ownerDocument || document;
 					var win = doc.defaultView || window;
-					var rect = { left: 0, width: win.innerWidth };
-					if ( sibs.length && sibs[ 0 ].parentElement ) {
-						var pr = sibs[ 0 ].parentElement.getBoundingClientRect();
-						rect = { left: pr.left, width: pr.width };
-					}
-					var by = boundaryY( sealedFrom, sibs );
-					setDrag( { y: by !== null ? by : e.clientY, idx: sealedFrom, left: rect.left, width: rect.width, doc: doc } );
+					var root = layoutRoot( t );
+					var rr = root ? root.getBoundingClientRect() : { left: 0, width: win.innerWidth };
+					var by = boundaryY( sealedFrom, units );
+					setDrag( { y: by !== null ? by : e.clientY, idx: sealedFrom, left: rr.left, width: rr.width, doc: doc } );
 				}
 				function onMarkerMove( e ) {
 					if ( ! drag ) {
 						return;
 					}
-					var sibs = topLevelSiblings( e.currentTarget );
-					var idx = candidateFromY( e.clientY, sibs );
-					var by = boundaryY( idx, sibs );
+					var units = topLevelUnits( e.currentTarget );
+					var idx = candidateFromY( e.clientY, units );
+					var by = boundaryY( idx, units );
 					setDrag( {
 						y: by !== null ? by : e.clientY,
 						idx: idx,
@@ -512,7 +545,7 @@
 					if ( ! drag ) {
 						return;
 					}
-					var idx = candidateFromY( e.clientY, topLevelSiblings( e.currentTarget ) );
+					var idx = candidateFromY( e.clientY, topLevelUnits( e.currentTarget ) );
 					setDrag( null );
 					if ( idx !== info.cut ) {
 						wp.data.dispatch( 'core/editor' ).editPost( { meta: { _crawlertoll_cut: idx } } );
@@ -521,31 +554,23 @@
 
 				var markerAbove = applicable && sealedFrom < info.total && info.index === sealedFrom;
 				var markerBelow = applicable && sealedFrom === info.total && info.index === info.total - 1;
-				var marker = null;
+				var markerChildren = null;
 				if ( markerAbove || markerBelow ) {
-					marker = el(
-						'div',
-						{
-							style: vizStyles.marker,
-							contentEditable: 'false',
-							title: __( 'Drag to move the paywall cut', 'crawlertoll' ),
-							onPointerDown: onMarkerDown,
-							onPointerMove: onMarkerMove,
-							onPointerUp: onMarkerUp,
-						},
-						el( 'span', { style: vizStyles.line } ),
+					markerChildren = [
+						el( 'span', { style: vizStyles.line, key: 'l' } ),
 						el(
 							'span',
-							{ style: vizStyles.tag },
+							{ style: vizStyles.tag, key: 't' },
 							( sealedFrom === info.total
 								? '🔓 ' + __( 'Nothing sealed — the whole article is free', 'crawlertoll' )
 								: '🔒 ' + ( info.cut > 0
 									? __( 'Sealed from here', 'crawlertoll' )
 									: __( 'Automatic cut — sealed from here', 'crawlertoll' ) ) ) + ' · ' + __( 'drag to move', 'crawlertoll' )
 						),
-						el( 'span', { style: vizStyles.line } )
-					);
+						el( 'span', { style: vizStyles.line, key: 'r' } ),
+					];
 				}
+				var marker = markerAbove || markerBelow;
 				// While dragging, a solid ghost line follows the pointer so the
 				// publisher sees the target position live; the meta (and with it
 				// the marker, dimming and fade) updates on release only — no
@@ -580,12 +605,35 @@
 				if ( ! marker && ! wrapStyle && ! ghost ) {
 					return el( BlockEdit, props );
 				}
+				// The wrapper must be position:relative so the absolute marker
+				// anchors to ITS top edge (= the block boundary). The injected
+				// rule zeroes the inner block's margins: bare direct children
+				// get margin:0 from Gutenberg, but inside our wrapper the block
+				// regains its intrinsic 21px which can't collapse through the
+				// styled wrapper — making every wrapped block 21px taller than
+				// a bare one and shifting geometry on every state change.
+				var markerStyle = markerBelow ? Object.assign( {}, vizStyles.marker, vizStyles.markerBelow ) : vizStyles.marker;
 				return el(
 					'div',
-					{ style: wrapStyle || undefined },
-					markerAbove ? marker : null,
+					{ className: 'ct-cutwrap', style: Object.assign( { position: 'relative' }, wrapStyle || {} ) },
+					el( 'style', null, '.ct-cutwrap>[data-block]{margin-top:0!important;margin-bottom:0!important;}' ),
+					markerAbove ? el( 'div', {
+						style: markerStyle,
+						contentEditable: 'false',
+						title: __( 'Drag to move the paywall cut', 'crawlertoll' ),
+						onPointerDown: onMarkerDown,
+						onPointerMove: onMarkerMove,
+						onPointerUp: onMarkerUp,
+					}, markerChildren ) : null,
 					el( BlockEdit, props ),
-					markerBelow ? marker : null,
+					markerBelow ? el( 'div', {
+						style: markerStyle,
+						contentEditable: 'false',
+						title: __( 'Drag to move the paywall cut', 'crawlertoll' ),
+						onPointerDown: onMarkerDown,
+						onPointerMove: onMarkerMove,
+						onPointerUp: onMarkerUp,
+					}, markerChildren ) : null,
 					ghost
 				);
 			};
