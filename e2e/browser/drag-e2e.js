@@ -1,15 +1,17 @@
 // CrawlerToll in-canvas cut-drag e2e (Playwright, real mouse events).
-// Drives the actual marker drag on demo post 12 and asserts:
-//   1. the ghost snaps to block boundaries while dragging
-//   2. a drop lands the meta EXACTLY on the boundary the ghost showed
-//   3. cut=total renders the "nothing sealed" marker below the last block
-//   4. the marker can be dragged again afterwards (no stuck state)
+// Usage: node drag-e2e.js [postId] [expectedUnits]
+//   node drag-e2e.js          → post 12 (3 paragraph blocks)
+//   node drag-e2e.js 20 8     → longform post with an image block
+// Asserts: ghost snaps to boundaries, drops land where shown, cut=total
+// keeps the marker, re-drag works, final delta < 20px.
 // Editor state only — never saves; the DB meta stays untouched.
 const { chromium } = require('playwright');
 
 const BASE = 'https://qa2.85.10.200.55.nip.io';
 const WP_USER = 'crawlertoll';
 const WP_PASS = '0I2KRfgSqSrGmBMPcqpzktxx';
+const POST_ID = process.argv[2] || '12';
+const EXPECT_UNITS = parseInt(process.argv[3] || '3', 10);
 
 let failures = 0;
 function ck(cond, msg) {
@@ -22,26 +24,27 @@ function ck(cond, msg) {
   const ctx = await browser.newContext({
     ignoreHTTPSErrors: true,
     httpCredentials: { username: 'ct-qa', password: 'IWq8wzBR4jFfee5NTv98' },
-    viewport: { width: 1400, height: 900 },
+    viewport: { width: 1400, height: 1600 }, // tall: longform post must fit without scrolling
   });
   const page = await ctx.newPage();
+  page.on('pageerror', (e) => console.log('[pageerror]', String(e).slice(0, 500)));
+  page.on('console', (m) => { if (m.type() === 'error') console.log('[console-err]', m.text().slice(0, 300)); });
 
   await page.goto(BASE + '/wp-login.php', { waitUntil: 'domcontentloaded' });
   await page.fill('#user_login', WP_USER);
   await page.fill('#user_pass', WP_PASS);
   await page.click('#wp-submit');
   await page.waitForLoadState('domcontentloaded');
-  await page.goto(BASE + '/wp-admin/post.php?post=12&action=edit', { waitUntil: 'domcontentloaded' });
+  await page.goto(BASE + '/wp-admin/post.php?post=' + POST_ID + '&action=edit', { waitUntil: 'domcontentloaded' });
 
   const canvas = page.frameLocator('iframe[name="editor-canvas"]');
   await canvas.locator('[data-block]').first().waitFor({ timeout: 30000 });
-  await page.keyboard.press('Escape'); // welcome guide, if any
+  await page.keyboard.press('Escape');
   await page.waitForTimeout(1500);
 
   const getCut = () => page.evaluate(() =>
     window.wp.data.select('core/editor').getEditedPostAttribute('meta')._crawlertoll_cut);
 
-  // Top-level layout children that are/contain blocks (mirrors topLevelUnits).
   const unitBoxes = async () => {
     const units = canvas.locator('.is-root-container > *:has([data-block]), .is-root-container > [data-block]');
     const n = await units.count();
@@ -49,67 +52,78 @@ function ck(cond, msg) {
     for (let i = 0; i < n; i++) boxes.push(await units.nth(i).boundingBox());
     return boxes;
   };
+  const markerSel = 'div[title="Drag to move the paywall cut"]';
+  const ghostSel = 'span:has-text("cut after block")';
 
-  const marker = canvas.locator('div[title="Drag to move the paywall cut"]');
+  const marker = canvas.locator(markerSel);
   await marker.waitFor({ timeout: 10000 });
-  const cutBefore = await getCut();
-  console.log('initial cut meta:', cutBefore);
-  ck(await marker.count() >= 1, 'marker rendered in canvas');
+  console.log('post', POST_ID, '| initial cut meta:', await getCut());
+  ck((await marker.count()) >= 1, 'marker rendered in canvas');
 
-  // ── Drag 1: from current position to BELOW the last block (cut=3) ──
+  const N = (await unitBoxes()).length;
+  ck(N === EXPECT_UNITS, EXPECT_UNITS + ' top-level units found (got ' + N + ')');
+  const midIdx = N >= 4 ? 3 : 2; // drop target for drag 3: top of unit (midIdx+1)
+
+  // ── Drag 1: to BELOW the last block (cut=N, nothing sealed) ──
+  await marker.scrollIntoViewIfNeeded();
   const m1 = await marker.boundingBox();
   const boxes1 = await unitBoxes();
-  ck(boxes1.length === 3, 'three top-level units found (got ' + boxes1.length + ')');
-  const dropY = boxes1[2].y + boxes1[2].height - 4; // lower half of last block
+  const last = boxes1[N - 1];
   await page.mouse.move(m1.x + m1.width / 2, m1.y + m1.height / 2);
   await page.mouse.down();
-  await page.mouse.move(m1.x + m1.width / 2, dropY, { steps: 12 });
+  await page.mouse.move(m1.x + m1.width / 2, last.y + last.height - 4, { steps: 14 });
   await page.waitForTimeout(300);
-  const ghost = canvas.locator('div:has-text("cut after block")');
-  ck(await ghost.count() === 1, 'ghost line visible while dragging');
-  const ghostText = await ghost.textContent();
-  ck(/cut after block\s*3/.test(ghostText), 'ghost snapped to boundary 3 at lower-half of last block (got "' + ghostText.trim().slice(0, 60) + '")');
+  const ghost = canvas.locator(ghostSel);
+  ck((await ghost.count()) === 1, 'ghost line visible while dragging');
+  const ghostText = (await ghost.textContent()).trim();
+  ck(new RegExp('cut after block\\s*' + N).test(ghostText), 'ghost snapped to boundary ' + N + ' (got "' + ghostText.slice(0, 60) + '")');
   const g1 = await ghost.boundingBox();
-  ck(Math.abs(g1.y + g1.height / 2 - (boxes1[2].y + boxes1[2].height)) < 14,
-    'ghost sits AT the bottom boundary (delta ' + Math.round(g1.y + g1.height / 2 - (boxes1[2].y + boxes1[2].height)) + 'px)');
+  ck(Math.abs(g1.y + g1.height / 2 - (last.y + last.height)) < 14,
+    'ghost sits AT the bottom boundary (delta ' + Math.round(g1.y + g1.height / 2 - (last.y + last.height)) + 'px)');
   await page.mouse.up();
-  await page.waitForTimeout(500);
-  ck((await getCut()) === 3, 'drop below last block persists cut=3 (got ' + (await getCut()) + ')');
-  const markerAfter = canvas.locator('div[title="Drag to move the paywall cut"]');
+  await page.waitForTimeout(600);
+  ck((await getCut()) === N, 'drop below last block persists cut=' + N + ' (got ' + (await getCut()) + ')');
+  const markerAfter = canvas.locator(markerSel);
   ck((await markerAfter.count()) === 1 && /Nothing sealed/.test(await markerAfter.textContent()),
     'cut=total renders "nothing sealed" marker below last block');
 
-  // ── Drag 2: back up between block 1 and 2 (cut=1) — proves re-drag works ──
+  // ── Drag 2: back up between unit 1 and 2 (cut=1) — re-drag works ──
+  await markerAfter.scrollIntoViewIfNeeded();
   const m2 = await markerAfter.boundingBox();
   const boxes2 = await unitBoxes();
-  const targetY2 = boxes2[1].y + 4; // just inside the top of block 2 → idx 1
   await page.mouse.move(m2.x + m2.width / 2, m2.y + m2.height / 2);
   await page.mouse.down();
-  await page.mouse.move(m2.x + m2.width / 2, targetY2, { steps: 12 });
+  await page.mouse.move(m2.x + m2.width / 2, boxes2[1].y + 4, { steps: 14 });
   await page.waitForTimeout(300);
-  const ghost2Text = await canvas.locator('div:has-text("cut after block")').textContent();
+  const ghost2Text = (await canvas.locator(ghostSel).textContent()).trim();
   await page.mouse.up();
-  await page.waitForTimeout(500);
-  ck(/cut after block\s*1/.test(ghost2Text), 'second drag: ghost snapped to boundary 1 (got "' + ghost2Text.trim().slice(0, 60) + '")');
+  await page.waitForTimeout(600);
+  ck(/cut after block\s*1/.test(ghost2Text), 'second drag: ghost snapped to boundary 1 (got "' + ghost2Text.slice(0, 60) + '")');
   ck((await getCut()) === 1, 'second drag persists cut=1 — marker not stuck (got ' + (await getCut()) + ')');
 
-  // ── Drag 3: between block 2 and 3 (cut=2); ghost Y ≈ final marker Y ──
-  const m3 = await canvas.locator('div[title="Drag to move the paywall cut"]').boundingBox();
+  // ── Drag 3: to top of unit (midIdx+1); ghost Y ≈ final marker Y ──
+  await canvas.locator(markerSel).scrollIntoViewIfNeeded();
+  const m3 = await canvas.locator(markerSel).boundingBox();
   const boxes3 = await unitBoxes();
-  const targetY3 = boxes3[2].y + 4; // top of block 3 → idx 2
   await page.mouse.move(m3.x + m3.width / 2, m3.y + m3.height / 2);
   await page.mouse.down();
-  await page.mouse.move(m3.x + m3.width / 2, targetY3, { steps: 10 });
+  await page.mouse.move(m3.x + m3.width / 2, boxes3[midIdx].y + 4, { steps: 12 });
   await page.waitForTimeout(300);
-  const g3 = await canvas.locator('div:has-text("cut after block")').boundingBox();
+  const g3 = await canvas.locator(ghostSel).boundingBox();
   await page.mouse.up();
-  await page.waitForTimeout(500);
-  ck((await getCut()) === 2, 'third drag persists cut=2 (got ' + (await getCut()) + ')');
-  const m3after = await canvas.locator('div[title="Drag to move the paywall cut"]').boundingBox();
+  await page.waitForTimeout(600);
+  ck((await getCut()) === midIdx, 'third drag persists cut=' + midIdx + ' (got ' + (await getCut()) + ')');
+  const m3after = await canvas.locator(markerSel).boundingBox();
   const delta = Math.abs((g3.y + g3.height / 2) - (m3after.y + m3after.height / 2));
   ck(delta < 20, 'final marker lands where the ghost showed (delta ' + Math.round(delta) + 'px)');
 
   console.log(failures === 0 ? 'ALL GREEN' : failures + ' FAILURES');
   await browser.close();
   process.exit(failures === 0 ? 0 : 1);
-})().catch((e) => { console.error('FATAL', e); process.exit(1); });
+})().catch(async (e) => {
+  console.error('FATAL', e);
+  try {
+    const { chromium } = require('playwright');
+  } catch {}
+  process.exit(1);
+});

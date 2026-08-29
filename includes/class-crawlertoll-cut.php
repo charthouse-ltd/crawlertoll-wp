@@ -266,7 +266,7 @@ class CrawlerToll_Cut {
 		wp_enqueue_script(
 			'crawlertoll-editor-panel',
 			plugins_url( 'assets/js/editor-panel.js', CRAWLERTOLL_PLUGIN_DIR . 'crawlertoll.php' ),
-			array( 'wp-plugins', 'wp-edit-post', 'wp-data', 'wp-element', 'wp-components', 'wp-i18n', 'wp-hooks', 'wp-compose' ),
+			array( 'wp-plugins', 'wp-edit-post', 'wp-editor', 'wp-data', 'wp-element', 'wp-components', 'wp-i18n' ),
 			(string) filemtime( $asset ),
 			true
 		);

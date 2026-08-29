@@ -52,8 +52,9 @@ ck( strpos( $panels, 'onPointerDown' ) !== false && strpos( $panels, 'onPointerM
 ck( strpos( $panels, 'onKeyDown' ) !== false, 'keyboard adjustment (accessibility) implemented' );
 ck( strpos( $panels, 'currentTarget' ) !== false, 'drag pointer capture on the divider itself (not a child)' );
 ck( strpos( $panels, 'displayCut' ) !== false, 'bar always rendered (auto mode shows dashed bar, never vanishes)' );
-ck( strpos( $panels, 'editor.BlockEdit' ) !== false && strpos( $panels, 'addFilter' ) !== false, 'in-canvas cut visualization filter registered (draggable marker + dim + fade)' );
-ck( strpos( $panels, 'maskImage' ) !== false, 'last free block fades at the cut in the editor' );
+ck( strpos( $panels, 'createPortal' ) !== false && strpos( $panels, 'registerPlugin' ) !== false, 'in-canvas visualization = single overlay portaled into the editor iframe' );
+ck( strpos( $panels, 'editor.BlockEdit' ) === false, 'no per-block filter wrappers (desync class eliminated)' );
+ck( strpos( $panels, 'fadeVeil' ) !== false && strpos( $panels, 'veil' ) !== false, 'sealed veil + fade veil overlays implemented' );
 ck( strpos( $panels, 'ghostLine' ) !== false, 'in-canvas drag shows a live ghost line' );
 ck( strpos( $gate, 'crawlertoll-fade-preview' ) !== false, 'front-end preview fades into the wall' );
 $unlocksrc = (string) file_get_contents( $dir . '/ui/src/unlock/App.tsx' );

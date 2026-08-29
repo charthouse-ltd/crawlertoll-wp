@@ -153,6 +153,26 @@
 		}, [] );
 		var editPost = wp.data.useDispatch( 'core/editor' ).editPost;
 
+		// Same explicit-invalidation guard as the canvas filter (see below):
+		// never trust useSelect alone across drag-driven store transitions.
+		var panelBump = useState( 0 );
+		useEffect( function () {
+			var last = null;
+			return wp.data.subscribe( function () {
+				var editor = wp.data.select( 'core/editor' );
+				var meta = editor ? editor.getEditedPostAttribute( 'meta' ) || {} : {};
+				var snap = ( parseInt( meta._crawlertoll_cut, 10 ) || 0 ) + '|' + ( meta._crawlertoll_premium ? 1 : 0 );
+				if ( snap !== last ) {
+					last = snap;
+					panelBump[ 1 ]( function ( v ) { return v + 1; } );
+				}
+			} );
+		}, [] );
+
+		// Panel is deprecated since WP 6.6 —
+		// prefer wp.editor's, fall back for older cores.
+		var Panel = ( wp.editor && wp.editor.PluginDocumentSettingPanel ) || wp.editPost.PluginDocumentSettingPanel;
+
 		var dragging = useState( false );
 		var isDragging = dragging[ 0 ];
 		var setDragging = dragging[ 1 ];
@@ -163,7 +183,7 @@
 
 		if ( ! sel.isPremium ) {
 			return el(
-				wp.editPost.PluginDocumentSettingPanel,
+				Panel,
 				{ name: 'crawlertoll-cut', title: __( 'Paywall cut', 'crawlertoll' ), icon: 'lock' },
 				el( 'p', { style: styles.note },
 					__( 'Mark this post as premium (CrawlerToll panel) to choose where the free preview ends and the sealed, paid part begins.', 'crawlertoll' ) )
@@ -363,281 +383,263 @@
 		}
 
 		return el(
-			wp.editPost.PluginDocumentSettingPanel,
+			Panel,
 			{ name: 'crawlertoll-cut', title: __( 'Paywall cut', 'crawlertoll' ), icon: 'lock' },
 			children
 		);
 	}
 
 	wp.plugins.registerPlugin( 'crawlertoll-cut', { render: CutPanel, icon: 'lock' } );
-
-	// ── In-canvas cut visualization ────────────────────────────────────────
-	// Three layers, all driven by the same _crawlertoll_cut meta:
-	//  1. a dashed "sealed from here" line above the first sealed block that
-	//     is itself DRAGGABLE — pull it up/down the text to move the cut
-	//     (a solid ghost line follows the pointer; the meta updates on drop);
-	//  2. sealed blocks are dimmed/grayscaled so the publisher sees exactly
-	//     what readers will NOT get for free;
-	//  3. the last free block fades out at its bottom edge, mirroring the
-	//     front-end paywall fade (mask-based, theme-background independent).
-	// Block posts only: classic posts are a single Classic block, so their
-	// paragraph-level cut stays in the sidebar outline. All of this is
-	// non-editable chrome, never post content.
-	if ( wp.hooks && wp.compose ) {
+	// ── In-canvas cut visualization (overlay architecture) ─────────────────
+	// ONE plugin component renders ALL canvas chrome — the draggable cut
+	// marker, the sealed-veil over sealed blocks, the fade over the last free
+	// block — as positioned overlays portaled into the editor iframe's body.
+	//
+	// Why overlays instead of per-block editor.BlockEdit filter wrappers:
+	//  1. modern Gutenberg puts data-block on the block's own element (no
+	//     outer wrapper), so filter wrappers sit between the layout root and
+	//     the block — breaking margin collapse (+21px per wrapped block) and
+	//     every assumption about block ancestry;
+	//  2. wrapper mount/unmount transitions interleave badly with wp-data
+	//     useSelect under React 18 continuous-event lanes — bisected
+	//     2026-08-29: after a real-mouse drag, some block instances never
+	//     received the store update and their DOM stayed stale forever;
+	//  3. overlays never touch the block tree: no remounts, no layout shift,
+	//     no commit-order dependence, and editing stays 100% untouched
+	//     (veils are pointer-events:none — sealed text remains editable).
+	// Positioning uses document coordinates inside the iframe, so scrolling
+	// needs no handler; a slow interval re-measures for typing/resizing.
+	if ( wp.element.createPortal ) {
 		var vizStyles = {
-			// Marker is ABSOLUTE within the block wrapper (out of flow): it
-			// overlays the boundary edge and never consumes layout space.
-			// Forensics 2026-08-29: in-flow chrome shifted blocks between
-			// drag-time and post-drop geometry (ghost/drop mismatch).
-			marker: { position: 'absolute', top: -7, left: 0, right: 0, zIndex: 2, display: 'flex', alignItems: 'center', gap: 8, height: 14, margin: 0, userSelect: 'none', cursor: 'ns-resize', touchAction: 'none' },
-			markerBelow: { top: 'auto', bottom: -7 },
+			veil: { position: 'absolute', background: 'rgba(255,255,255,0.62)', zIndex: 4, pointerEvents: 'none' },
+			fadeVeil: { position: 'absolute', zIndex: 5, pointerEvents: 'none',
+				background: 'linear-gradient(to bottom, rgba(255,255,255,0) 25%, rgba(255,255,255,0.94) 96%)' },
+			marker: { position: 'absolute', zIndex: 6, display: 'flex', alignItems: 'center', gap: 8, height: 14, pointerEvents: 'auto', userSelect: 'none', cursor: 'ns-resize', touchAction: 'none' },
 			line: { flex: 1, borderTop: '2px dashed #b32d2e' },
-			tag: { fontSize: 11, fontWeight: 600, color: '#b32d2e', whiteSpace: 'nowrap', fontFamily: 'sans-serif' },
-			dim: { opacity: 0.42, filter: 'grayscale(0.35)' },
-			fade: {
-				WebkitMaskImage: 'linear-gradient(to bottom, #000 30%, rgba(0,0,0,0) 96%)',
-				maskImage: 'linear-gradient(to bottom, #000 30%, rgba(0,0,0,0) 96%)',
-			},
-			ghost: { position: 'fixed', height: 14, marginTop: -7, zIndex: 99999, pointerEvents: 'none', display: 'flex', alignItems: 'center', gap: 8 },
+			tag: { fontSize: 11, fontWeight: 600, color: '#b32d2e', whiteSpace: 'nowrap', fontFamily: 'sans-serif', background: 'rgba(255,255,255,0.85)', borderRadius: 3, padding: '0 3px' },
+			ghost: { position: 'absolute', zIndex: 7, display: 'flex', alignItems: 'center', gap: 8, height: 14, pointerEvents: 'none' },
 			ghostLine: { flex: 1, borderTop: '2px solid #2271b1' },
 			ghostTag: { fontSize: 10, fontWeight: 700, color: '#fff', background: '#2271b1', borderRadius: 8, padding: '0 8px', lineHeight: '14px', whiteSpace: 'nowrap', fontFamily: 'sans-serif' },
 		};
 
-		var withCutViz = wp.compose.createHigherOrderComponent( function ( BlockEdit ) {
-			return function ( props ) {
-				var info = wp.data.useSelect( function ( select ) {
-					var editor = select( 'core/editor' );
-					var be = select( 'core/block-editor' );
-					if ( ! editor || ! be ) {
-						return { premium: false, cut: 0, blockMarkup: false, isTopLevel: false, index: -1, total: 0 };
+		function editorIframe() {
+			return document.querySelector( 'iframe[name="editor-canvas"]' );
+		}
+		// Top-level block units = direct children of the layout root that are
+		// (or contain) a top-level block. Document-order = block order.
+		function layoutUnits( doc ) {
+			var root = doc.querySelector( '.is-root-container' );
+			if ( ! root ) {
+				return null;
+			}
+			var units = [];
+			Array.prototype.forEach.call( root.children, function ( child ) {
+				if ( child.hasAttribute( 'data-block' ) || child.querySelector( '[data-block]' ) ) {
+					units.push( child );
+				}
+			} );
+			return { root: root, units: units };
+		}
+		function candidateFromY( clientY, units ) {
+			var idx = 1;
+			for ( var i = 0; i < units.length; i++ ) {
+				var r = units[ i ].getBoundingClientRect();
+				if ( clientY > r.top + r.height / 2 ) {
+					idx = i + 1;
+				}
+			}
+			if ( idx < 1 ) {
+				idx = 1;
+			}
+			if ( idx > units.length ) {
+				idx = units.length;
+			}
+			return idx;
+		}
+		// Viewport Y of the boundary AFTER unit idx (1-based count).
+		function boundaryViewportY( idx, units ) {
+			if ( ! units.length ) {
+				return null;
+			}
+			if ( idx >= units.length ) {
+				return units[ units.length - 1 ].getBoundingClientRect().bottom;
+			}
+			return units[ idx ].getBoundingClientRect().top;
+		}
+
+		function CanvasCutOverlay() {
+			var refreshPair = useState( 0 );
+			var refresh = refreshPair[ 1 ];
+			var dragPair = useState( null ); // { y, idx } while dragging (viewport coords)
+			var drag = dragPair[ 0 ];
+			var setDrag = dragPair[ 1 ];
+			var infoRef = useRef( { premium: false, cut: 0, blockMarkup: false } );
+
+			useEffect( function () {
+				function read() {
+					var editor = wp.data.select( 'core/editor' );
+					if ( ! editor ) {
+						return null;
 					}
 					var meta = editor.getEditedPostAttribute( 'meta' ) || {};
 					var raw = editor.getEditedPostContent ? editor.getEditedPostContent() : '';
-					var rootId = be.getBlockRootClientId ? be.getBlockRootClientId( props.clientId ) : null;
 					return {
 						premium: !! meta._crawlertoll_premium,
 						cut: typeof meta._crawlertoll_cut === 'number' ? meta._crawlertoll_cut : parseInt( meta._crawlertoll_cut, 10 ) || 0,
 						blockMarkup: /<!--\s*wp:/.test( raw ),
-						isTopLevel: ! rootId,
-						index: be.getBlockIndex ? be.getBlockIndex( props.clientId ) : -1,
-						total: be.getBlockCount ? be.getBlockCount() : ( be.getBlocks() || [] ).length,
 					};
-				}, [ props.clientId ] );
-				var dragPair = useState( null ); // { y, idx, left, width } while dragging
-				var drag = dragPair[ 0 ];
-				var setDrag = dragPair[ 1 ];
+				}
+				var last = '';
+				function onChange() {
+					var s = read();
+					var key = s ? s.premium + '|' + s.cut + '|' + s.blockMarkup : '';
+					if ( key !== last ) {
+						last = key;
+						infoRef.current = s || infoRef.current;
+						refresh( function ( v ) { return v + 1; } );
+					}
+				}
+				var unsub = wp.data.subscribe( onChange );
+				// Layout shifts (typing, block moves, resizes, iframe remounts)
+				// change rects without touching our meta — re-measure lazily.
+				var iv = setInterval( function () {
+					onChange();
+					refresh( function ( v ) { return v + 1; } );
+				}, 1500 );
+				onChange();
+				return function () {
+					unsub();
+					clearInterval( iv );
+				};
+			}, [] );
 
-				// The cut seals AFTER unit N → the first sealed block sits at
-				// 0-based index N (automatic mode: after block 1 → index 1).
-				// sealedFrom === total is legal ("everything free"): the marker
-				// then sits BELOW the last block so it never vanishes, and no
-				// fade is applied — mirroring the front end, where cut=total
-				// means no sealed body and no fade (Chris QA 2026-08-29: a drop
-				// in the last block's lower half made the cut "jump").
-				var sealedFrom = info.cut > 0 ? info.cut : 1;
-				var applicable = info.premium && info.blockMarkup && info.isTopLevel && info.total > 1;
-				var isSealed = applicable && info.index >= sealedFrom;
-				var isLastFree = applicable && sealedFrom < info.total && info.index === sealedFrom - 1;
+			var info = infoRef.current;
+			var ifr = editorIframe();
+			if ( ! info.premium || ! info.blockMarkup || ! ifr || ! ifr.contentDocument ) {
+				return null;
+			}
+			var doc = ifr.contentDocument;
+			var win = doc.defaultView;
+			var found = layoutUnits( doc );
+			if ( ! found || found.units.length < 2 ) {
+				return null;
+			}
+			var units = found.units;
+			var n = units.length;
+			var sx = win.pageXOffset || 0;
+			var sy = win.pageYOffset || 0;
+			var rootRect = found.root.getBoundingClientRect();
+			var rootLeft = rootRect.left + sx;
+			var rootWidth = rootRect.width;
 
-				// Top-level block UNITS = the direct children of the layout root
-				// that are (or contain) a top-level block. CRITICAL: in modern
-				// Gutenberg there is NO outer block wrapper — the data-block
-				// attribute sits on the block's own element (the <p> itself),
-				// and OUR filter wrappers sit between the layout root and that
-				// element. So closest('[data-block]') from the marker finds
-				// nothing (live DOM inspection 2026-08-29: sibling search came
-				// back empty → every drag pinned to cut=1, ghost froze).
-				function layoutRoot( el ) {
-					var node = el;
-					while ( node && node.parentElement ) {
-						if ( /is-root-container/.test( ( node.parentElement.className || '' ).toString() ) ) {
-							return node.parentElement;
-						}
-						node = node.parentElement;
-					}
-					return null;
-				}
-				function topLevelUnits( node ) {
-					var root = layoutRoot( node );
-					if ( root ) {
-						var units = [];
-						Array.prototype.forEach.call( root.children, function ( child ) {
-							if ( child.hasAttribute( 'data-block' ) || child.querySelector( '[data-block]' ) ) {
-								units.push( child );
-							}
-						} );
-						return units;
-					}
-					// Fallback: document-order top-level [data-block] elements.
-					var all = Array.prototype.slice.call( ( node.ownerDocument || document ).querySelectorAll( '[data-block]' ) );
-					return all.filter( function ( b ) {
-						var p = b.parentElement;
-						while ( p ) {
-							if ( p.hasAttribute && p.hasAttribute( 'data-block' ) ) {
-								return false;
-							}
-							p = p.parentElement;
-						}
-						return true;
-					} );
-				}
-				function candidateFromY( clientY, units ) {
-					var idx = 1;
-					for ( var i = 0; i < units.length; i++ ) {
-						var r = units[ i ].getBoundingClientRect();
-						if ( clientY > r.top + r.height / 2 ) {
-							idx = i + 1;
-						}
-					}
-					if ( idx < 1 ) {
-						idx = 1;
-					}
-					if ( idx > units.length ) {
-						idx = units.length;
-					}
-					return idx;
-				}
-				// The ghost SNAPS to block boundaries (not the raw cursor): the
-				// cut can only exist between blocks, so the preview must show
-				// the exact landing spot — what you see is what you drop.
-				function boundaryY( idx, units ) {
-					if ( ! units.length ) {
-						return null;
-					}
-					if ( idx >= units.length ) {
-						return units[ units.length - 1 ].getBoundingClientRect().bottom;
-					}
-					return units[ idx ].getBoundingClientRect().top;
-				}
-				function onMarkerDown( e ) {
-					e.preventDefault();
-					e.stopPropagation();
-					var t = e.currentTarget;
-					t.setPointerCapture && t.setPointerCapture( e.pointerId );
-					var units = topLevelUnits( t );
-					// The block editor canvas is an IFRAME in modern WP: pointer
-					// clientY is iframe-viewport-relative, so the ghost must render
-					// into the SAME document or it is offset by the iframe's page
-					// position (Chris QA 2026-08-29: "now it is above").
-					var doc = t.ownerDocument || document;
-					var win = doc.defaultView || window;
-					var root = layoutRoot( t );
-					var rr = root ? root.getBoundingClientRect() : { left: 0, width: win.innerWidth };
-					var by = boundaryY( sealedFrom, units );
-					setDrag( { y: by !== null ? by : e.clientY, idx: sealedFrom, left: rr.left, width: rr.width, doc: doc } );
-				}
-				function onMarkerMove( e ) {
-					if ( ! drag ) {
-						return;
-					}
-					var units = topLevelUnits( e.currentTarget );
-					var idx = candidateFromY( e.clientY, units );
-					var by = boundaryY( idx, units );
-					setDrag( {
-						y: by !== null ? by : e.clientY,
-						idx: idx,
-						left: drag.left,
-						width: drag.width,
-						doc: drag.doc,
-					} );
-				}
-				function onMarkerUp( e ) {
-					if ( ! drag ) {
-						return;
-					}
-					var idx = candidateFromY( e.clientY, topLevelUnits( e.currentTarget ) );
-					setDrag( null );
-					if ( idx !== info.cut ) {
-						wp.data.dispatch( 'core/editor' ).editPost( { meta: { _crawlertoll_cut: idx } } );
-					}
-				}
+			// The cut seals AFTER unit N → first sealed unit is 0-based index N.
+			// cut=0 (auto) displays at 1; cut>=n renders below the last block.
+			var sealedFrom = info.cut > 0 ? Math.min( info.cut, n ) : 1;
 
-				var markerAbove = applicable && sealedFrom < info.total && info.index === sealedFrom;
-				var markerBelow = applicable && sealedFrom === info.total && info.index === info.total - 1;
-				var markerChildren = null;
-				if ( markerAbove || markerBelow ) {
-					markerChildren = [
-						el( 'span', { style: vizStyles.line, key: 'l' } ),
-						el(
-							'span',
-							{ style: vizStyles.tag, key: 't' },
-							( sealedFrom === info.total
-								? '🔓 ' + __( 'Nothing sealed — the whole article is free', 'crawlertoll' )
-								: '🔒 ' + ( info.cut > 0
-									? __( 'Sealed from here', 'crawlertoll' )
-									: __( 'Automatic cut — sealed from here', 'crawlertoll' ) ) ) + ' · ' + __( 'drag to move', 'crawlertoll' )
-						),
-						el( 'span', { style: vizStyles.line, key: 'r' } ),
-					];
-				}
-				var marker = markerAbove || markerBelow;
-				// While dragging, a solid ghost line follows the pointer so the
-				// publisher sees the target position live; the meta (and with it
-				// the marker, dimming and fade) updates on release only — no
-				// undo-history pollution from intermediate positions.
-				// PORTAL to document.body: this component renders inside the
-				// sealed block's wrapper, which carries `filter: grayscale()` —
-				// and any ancestor with filter/transform makes position:fixed
-				// resolve against that box instead of the viewport (Chris QA
-				// 2026-08-29: ghost appeared "much further down" than the cut).
-				var ghost = null;
-				if ( drag ) {
-					ghost = wp.element.createPortal(
-						el(
-							'div',
-							{ style: Object.assign( {}, vizStyles.ghost, { top: drag.y, left: drag.left, width: drag.width } ) },
-							el( 'span', { style: vizStyles.ghostLine } ),
-							el( 'span', { style: vizStyles.ghostTag },
-								'✂ ' + __( 'cut after block ', 'crawlertoll' ) + drag.idx +
-								( drag.idx >= info.total ? ' — ' + __( 'nothing sealed', 'crawlertoll' ) : '' ) ),
-							el( 'span', { style: vizStyles.ghostLine } )
-						),
-						( drag.doc || document ).body
+			var children = [];
+
+			// Sealed veils (dimming) over units[sealedFrom..].
+			if ( sealedFrom < n ) {
+				for ( var i = sealedFrom; i < n; i++ ) {
+					var r = units[ i ].getBoundingClientRect();
+					children.push(
+						el( 'div', {
+							key: 'v' + i,
+							style: Object.assign( {}, vizStyles.veil, {
+								top: r.top + sy, left: r.left + sx, width: r.width, height: r.height,
+							} ),
+						} )
 					);
 				}
-
-				var wrapStyle = null;
-				if ( isSealed ) {
-					wrapStyle = vizStyles.dim;
-				} else if ( isLastFree ) {
-					wrapStyle = vizStyles.fade;
-				}
-				if ( ! marker && ! wrapStyle && ! ghost ) {
-					return el( BlockEdit, props );
-				}
-				// The wrapper must be position:relative so the absolute marker
-				// anchors to ITS top edge (= the block boundary). The injected
-				// rule zeroes the inner block's margins: bare direct children
-				// get margin:0 from Gutenberg, but inside our wrapper the block
-				// regains its intrinsic 21px which can't collapse through the
-				// styled wrapper — making every wrapped block 21px taller than
-				// a bare one and shifting geometry on every state change.
-				var markerStyle = markerBelow ? Object.assign( {}, vizStyles.marker, vizStyles.markerBelow ) : vizStyles.marker;
-				return el(
-					'div',
-					{ className: 'ct-cutwrap', style: Object.assign( { position: 'relative' }, wrapStyle || {} ) },
-					el( 'style', null, '.ct-cutwrap>[data-block]{margin-top:0!important;margin-bottom:0!important;}' ),
-					markerAbove ? el( 'div', {
-						style: markerStyle,
-						contentEditable: 'false',
-						title: __( 'Drag to move the paywall cut', 'crawlertoll' ),
-						onPointerDown: onMarkerDown,
-						onPointerMove: onMarkerMove,
-						onPointerUp: onMarkerUp,
-					}, markerChildren ) : null,
-					el( BlockEdit, props ),
-					markerBelow ? el( 'div', {
-						style: markerStyle,
-						contentEditable: 'false',
-						title: __( 'Drag to move the paywall cut', 'crawlertoll' ),
-						onPointerDown: onMarkerDown,
-						onPointerMove: onMarkerMove,
-						onPointerUp: onMarkerUp,
-					}, markerChildren ) : null,
-					ghost
+				// Fade veil over the last FREE unit (mirrors the front-end fade).
+				var lf = units[ sealedFrom - 1 ].getBoundingClientRect();
+				children.push(
+					el( 'div', {
+						key: 'fade',
+						style: Object.assign( {}, vizStyles.fadeVeil, {
+							top: lf.top + sy, left: lf.left + sx, width: lf.width, height: lf.height,
+						} ),
+					} )
 				);
-			};
-		}, 'withCrawlerTollCutViz' );
-		wp.hooks.addFilter( 'editor.BlockEdit', 'crawlertoll/cut-viz', withCutViz );
+			}
+
+			// The draggable cut marker at the boundary.
+			var bY = boundaryViewportY( sealedFrom, units );
+			if ( bY !== null ) {
+				var tagText = sealedFrom >= n
+					? '🔓 ' + __( 'Nothing sealed — the whole article is free', 'crawlertoll' )
+					: '🔒 ' + ( info.cut > 0
+						? __( 'Sealed from here', 'crawlertoll' )
+						: __( 'Automatic cut — sealed from here', 'crawlertoll' ) );
+				children.push(
+					el(
+						'div',
+						{
+							key: 'marker',
+							style: Object.assign( {}, vizStyles.marker, {
+								top: bY + sy - 7, left: rootLeft, width: rootWidth,
+							} ),
+							contentEditable: 'false',
+							title: __( 'Drag to move the paywall cut', 'crawlertoll' ),
+							onPointerDown: function ( e ) {
+								e.preventDefault();
+								e.stopPropagation();
+								var t = e.currentTarget;
+								t.setPointerCapture && t.setPointerCapture( e.pointerId );
+								setDrag( { y: bY, idx: sealedFrom } );
+							},
+							onPointerMove: function ( e ) {
+								if ( ! drag ) {
+									return;
+								}
+								var idx = candidateFromY( e.clientY, layoutUnits( doc ).units );
+								var gy = boundaryViewportY( idx, layoutUnits( doc ).units );
+								setDrag( { y: gy !== null ? gy : e.clientY, idx: idx } );
+							},
+							onPointerUp: function ( e ) {
+								if ( ! drag ) {
+									return;
+								}
+								var idx = candidateFromY( e.clientY, layoutUnits( doc ).units );
+								setDrag( null );
+								if ( idx !== info.cut ) {
+									wp.data.dispatch( 'core/editor' ).editPost( { meta: { _crawlertoll_cut: idx } } );
+								}
+							},
+						},
+						el( 'span', { style: vizStyles.line } ),
+						el( 'span', { style: vizStyles.tag }, tagText + ' · ' + __( 'drag to move', 'crawlertoll' ) ),
+						el( 'span', { style: vizStyles.line } )
+					)
+				);
+			}
+
+			// The ghost line while dragging (snapped to its boundary).
+			if ( drag ) {
+				children.push(
+					el(
+						'div',
+						{
+							key: 'ghost',
+							style: Object.assign( {}, vizStyles.ghost, {
+								top: drag.y + sy - 7, left: rootLeft, width: rootWidth,
+							} ),
+						},
+						el( 'span', { style: vizStyles.ghostLine } ),
+						el( 'span', { style: vizStyles.ghostTag },
+							'✂ ' + __( 'cut after block ', 'crawlertoll' ) + drag.idx +
+							( drag.idx >= n ? ' — ' + __( 'nothing sealed', 'crawlertoll' ) : '' ) ),
+						el( 'span', { style: vizStyles.ghostLine } )
+					)
+				);
+			}
+
+			return wp.element.createPortal(
+				el( 'div', { style: { position: 'absolute', top: 0, left: 0, width: 0, height: 0, pointerEvents: 'none' } }, children ),
+				doc.body
+			);
+		}
+
+		wp.plugins.registerPlugin( 'crawlertoll-cut-viz', { render: CanvasCutOverlay } );
 	}
 } )( window.wp );
