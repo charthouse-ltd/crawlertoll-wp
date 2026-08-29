@@ -50,6 +50,9 @@ ck( strpos( $panels, '_crawlertoll_cut' ) !== false, 'panel persists _crawlertol
 ck( strpos( $panels, '_crawlertoll_premium' ) !== false, 'panel only activates for premium posts' );
 ck( strpos( $panels, 'onPointerDown' ) !== false && strpos( $panels, 'onPointerMove' ) !== false, 'drag interaction (pointer events) implemented' );
 ck( strpos( $panels, 'onKeyDown' ) !== false, 'keyboard adjustment (accessibility) implemented' );
+ck( strpos( $panels, 'currentTarget' ) !== false, 'drag pointer capture on the divider itself (not a child)' );
+ck( strpos( $panels, 'displayCut' ) !== false, 'bar always rendered (auto mode shows dashed bar, never vanishes)' );
+ck( strpos( $panels, 'editor.BlockListBlock' ) !== false && strpos( $panels, 'addFilter' ) !== false, 'in-canvas "sealed from here" marker filter registered' );
 
 // E — Wall preview admin tab.
 ck( strpos( $admin, "'preview'" ) !== false, 'Wall preview tab registered' );

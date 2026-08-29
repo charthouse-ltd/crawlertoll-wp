@@ -104,6 +104,7 @@
 			touchAction: 'none',
 		},
 		dividerLine: { position: 'absolute', left: 0, right: 0, top: 6, height: 2, background: '#2271b1' },
+		dividerLineAuto: { background: 'transparent', borderTop: '2px dashed #2271b1', height: 0 },
 		dividerGrip: {
 			position: 'relative',
 			zIndex: 1,
@@ -115,6 +116,7 @@
 			padding: '0 8px',
 			lineHeight: '14px',
 		},
+		dividerGripAuto: { background: '#fff', color: '#2271b1', border: '1px solid #2271b1' },
 		boundary: { height: 8, cursor: 'pointer', background: 'transparent' },
 		boundaryHover: { background: '#d6ecfa' },
 		counts: { fontSize: 12, color: '#555', margin: '8px 0 0' },
@@ -193,14 +195,23 @@
 		if ( cut > n ) {
 			cut = 0; // stored index no longer resolves — treat as auto, mirroring split_for_post
 		}
+		// Where the bar is DISPLAYED. In automatic mode (cut 0) the effective
+		// cut sits after the first unit — render the bar there (dashed, labeled
+		// "auto") so it is always visible and draggable, instead of vanishing.
+		var displayCut = cut === 0 ? 1 : cut;
 
 		function persist( idx ) {
 			editPost( { meta: { _crawlertoll_cut: idx } } );
 		}
 
 		// Drag: pointer Y → nearest boundary between rows (midpoint rule).
+		// Clamped to 1..n: dragging to the very top means "seal after the
+		// first unit", NEVER automatic mode — auto is only reachable through
+		// the explicit reset link. (Previously the top overshoot returned 0,
+		// which silently reset to auto and unmounted the bar mid-drag —
+		// Chris: "I dragged it up one paragraph then it disappeared".)
 		function boundaryFromY( clientY ) {
-			var idx = 0;
+			var idx = 1;
 			for ( var i = 0; i < n; i++ ) {
 				var node = rowRefs.current[ i ];
 				if ( ! node ) {
@@ -211,14 +222,17 @@
 					idx = i + 1;
 				}
 			}
-			return idx;
+			return idx < 1 ? 1 : ( idx > n ? n : idx );
 		}
 
 		function onPointerDown( e ) {
 			e.preventDefault();
-			e.target.setPointerCapture && e.target.setPointerCapture( e.pointerId );
+			// Capture on the divider itself (currentTarget), not whichever
+			// child (line/grip) the pointer landed on — robust during moves.
+			var t = e.currentTarget;
+			t.setPointerCapture && t.setPointerCapture( e.pointerId );
 			setDragging( true );
-			setDragCut( sel.cut > 0 && sel.cut <= n ? sel.cut : 1 );
+			setDragCut( displayCut );
 		}
 		function onPointerMove( e ) {
 			if ( isDragging ) {
@@ -232,12 +246,12 @@
 			setDragging( false );
 			var idx = boundaryFromY( e.clientY );
 			setDragCut( null );
-			persist( idx >= 1 && idx <= n ? idx : 0 );
+			persist( idx );
 		}
 
 		var rows = [];
 		units.forEach( function ( unit, i ) {
-			var isFree = cut === 0 ? i === 0 : i < cut;
+			var isFree = i < displayCut;
 			var rowStyle = Object.assign( {}, styles.row, isFree ? styles.rowFree : styles.rowSealed );
 			rows.push(
 				el(
@@ -253,9 +267,13 @@
 					unit.snippet || el( 'em', null, __( '(no text)', 'crawlertoll' ) )
 				)
 			);
-			// A cut boundary sits after every row. The ACTIVE cut gets the drag
-			// handle; the others are click targets ("move the cut here").
-			if ( cut > 0 && i === cut - 1 ) {
+			// A cut boundary sits after every row. The ACTIVE cut position gets
+			// the drag handle — always rendered (dashed + "auto" label when the
+			// cut is automatic); the others are click targets ("move cut here").
+			if ( i === displayCut - 1 ) {
+				var isAuto = cut === 0 && dragCut === null;
+				var lineStyle = Object.assign( {}, styles.dividerLine, isAuto ? styles.dividerLineAuto : null );
+				var gripStyle = Object.assign( {}, styles.dividerGrip, isAuto ? styles.dividerGripAuto : null );
 				rows.push(
 					el(
 						'div',
@@ -266,23 +284,23 @@
 							'aria-label': __( 'Paywall cut position', 'crawlertoll' ),
 							'aria-valuemin': 1,
 							'aria-valuemax': n,
-							'aria-valuenow': cut,
+							'aria-valuenow': displayCut,
 							tabIndex: 0,
 							onPointerDown: onPointerDown,
 							onPointerMove: onPointerMove,
 							onPointerUp: onPointerUp,
 							onKeyDown: function ( e ) {
-								if ( e.key === 'ArrowDown' && cut < n ) {
+								if ( e.key === 'ArrowDown' && displayCut < n ) {
 									e.preventDefault();
-									persist( cut + 1 );
-								} else if ( e.key === 'ArrowUp' && cut > 1 ) {
+									persist( displayCut + 1 );
+								} else if ( e.key === 'ArrowUp' && displayCut > 1 ) {
 									e.preventDefault();
-									persist( cut - 1 );
+									persist( displayCut - 1 );
 								}
 							},
 						},
-						el( 'div', { style: styles.dividerLine } ),
-						el( 'span', { style: styles.dividerGrip }, '✂ ' + __( 'cut', 'crawlertoll' ) )
+						el( 'div', { style: lineStyle } ),
+						el( 'span', { style: gripStyle }, isAuto ? '✂ ' + __( 'auto', 'crawlertoll' ) : '✂ ' + __( 'cut', 'crawlertoll' ) )
 					)
 				);
 			} else if ( n > 1 ) {
@@ -352,4 +370,62 @@
 	}
 
 	wp.plugins.registerPlugin( 'crawlertoll-cut', { render: CutPanel, icon: 'lock' } );
+
+	// ── In-canvas cut marker ───────────────────────────────────────────────
+	// Renders a dashed "sealed from here" line directly in the editor canvas
+	// above the first sealed block, so the publisher sees the cut while
+	// writing — not only in the sidebar. Block posts only: classic posts are
+	// a single Classic block, so their paragraph-level cut stays in the
+	// sidebar outline. The marker is non-editable chrome, never post content.
+	if ( wp.hooks && wp.compose ) {
+		var markerStyles = {
+			wrap: { display: 'flex', alignItems: 'center', gap: 8, margin: '2px 0 6px', userSelect: 'none' },
+			line: { flex: 1, borderTop: '2px dashed #b32d2e' },
+			tag: { fontSize: 11, fontWeight: 600, color: '#b32d2e', whiteSpace: 'nowrap', fontFamily: 'sans-serif' },
+		};
+		var withCutMarker = wp.compose.createHigherOrderComponent( function ( BlockListBlock ) {
+			return function ( props ) {
+				var info = wp.data.useSelect( function ( select ) {
+					var editor = select( 'core/editor' );
+					var be = select( 'core/block-editor' );
+					if ( ! editor || ! be ) {
+						return { premium: false, cut: 0, blockMarkup: false, isTopLevel: false, index: -1, total: 0 };
+					}
+					var meta = editor.getEditedPostAttribute( 'meta' ) || {};
+					var raw = editor.getEditedPostContent ? editor.getEditedPostContent() : '';
+					var rootId = be.getBlockRootClientId ? be.getBlockRootClientId( props.clientId ) : null;
+					return {
+						premium: !! meta._crawlertoll_premium,
+						cut: typeof meta._crawlertoll_cut === 'number' ? meta._crawlertoll_cut : parseInt( meta._crawlertoll_cut, 10 ) || 0,
+						blockMarkup: /<!--\s*wp:/.test( raw ),
+						isTopLevel: ! rootId,
+						index: be.getBlockIndex ? be.getBlockIndex( props.clientId ) : -1,
+						total: be.getBlockCount ? be.getBlockCount() : ( be.getBlocks() || [] ).length,
+					};
+				}, [ props.clientId ] );
+
+				var marker = null;
+				// The cut seals AFTER unit N → the first sealed block sits at
+				// 0-based index N (automatic mode: after block 1 → index 1).
+				var sealedFrom = info.cut > 0 ? info.cut : 1;
+				if ( info.premium && info.blockMarkup && info.isTopLevel && info.index === sealedFrom && sealedFrom < info.total ) {
+					marker = el(
+						'div',
+						{ style: markerStyles.wrap, contentEditable: 'false' },
+						el( 'span', { style: markerStyles.line } ),
+						el(
+							'span',
+							{ style: markerStyles.tag },
+							'🔒 ' + ( info.cut > 0
+								? __( 'Sealed from here — readers pay or use a free read', 'crawlertoll' )
+								: __( 'Automatic cut — sealed from here', 'crawlertoll' ) )
+						),
+						el( 'span', { style: markerStyles.line } )
+					);
+				}
+				return el( wp.element.Fragment, null, marker, el( BlockListBlock, props ) );
+			};
+		}, 'withCrawlerTollCutMarker' );
+		wp.hooks.addFilter( 'editor.BlockListBlock', 'crawlertoll/cut-marker', withCutMarker );
+	}
 } )( window.wp );
