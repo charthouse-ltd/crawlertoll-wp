@@ -124,12 +124,29 @@
 
 	function CutPanel() {
 		var sel = wp.data.useSelect( function ( select ) {
-			var meta = select( 'core/editor' ).getEditedPostAttribute( 'meta' ) || {};
+			var editor = select( 'core/editor' );
+			var meta = editor.getEditedPostAttribute( 'meta' ) || {};
 			var be = select( 'core/block-editor' );
+			var raw = editor.getEditedPostContent ? editor.getEditedPostContent() : '';
+			var isBlockMarkup = /<!--\s*wp:/.test( raw );
+			var blocks = be ? be.getBlocks() : [];
+			// Classic posts (no block markup) open in Gutenberg as ONE Classic
+			// block — block granularity would make the bar useless. Mirror the
+			// PHP paragraph_boundaries() unit model instead (split on blank
+			// lines), so the drag index means the same thing on both sides.
+			var units = null;
+			if ( ! isBlockMarkup && raw.trim() !== '' ) {
+				units = raw.split( /\n\s*\n/ ).map( function ( p ) {
+					return p.trim();
+				} ).filter( function ( p ) {
+					return p !== '';
+				} );
+			}
 			return {
 				isPremium: !! meta._crawlertoll_premium,
 				cut: typeof meta._crawlertoll_cut === 'number' ? meta._crawlertoll_cut : parseInt( meta._crawlertoll_cut, 10 ) || 0,
-				blocks: be ? be.getBlocks() : [],
+				blocks: blocks,
+				classicUnits: units,
 			};
 		}, [] );
 		var editPost = wp.data.useDispatch( 'core/editor' ).editPost;
@@ -152,7 +169,26 @@
 		}
 
 		var blocks = sel.blocks || [];
-		var n = blocks.length;
+		// Normalized outline units: Gutenberg blocks, or classic paragraphs when
+		// the post has no block markup (mirrors PHP paragraph_boundaries()).
+		var units = [];
+		if ( sel.classicUnits ) {
+			sel.classicUnits.forEach( function ( p, i ) {
+				var text = stripTags( p ).trim().replace( /\s+/g, ' ' );
+				units.push( {
+					name: '¶ ' + ( i + 1 ),
+					snippet: text.length > 60 ? text.slice( 0, 57 ) + '…' : text,
+					key: 'p' + i,
+					words: text ? text.split( /\s+/ ).length : 0,
+				} );
+			} );
+		} else {
+			blocks.forEach( function ( block, i ) {
+				var label = blockLabel( block, i );
+				units.push( { name: label.name, snippet: label.snippet, key: label.key, words: wordCount( [ block ] ) } );
+			} );
+		}
+		var n = units.length;
 		var cut = dragCut !== null ? dragCut : sel.cut; // explicit > live-drag > stored
 		if ( cut > n ) {
 			cut = 0; // stored index no longer resolves — treat as auto, mirroring split_for_post
@@ -200,22 +236,21 @@
 		}
 
 		var rows = [];
-		blocks.forEach( function ( block, i ) {
-			var label = blockLabel( block, i );
+		units.forEach( function ( unit, i ) {
 			var isFree = cut === 0 ? i === 0 : i < cut;
 			var rowStyle = Object.assign( {}, styles.row, isFree ? styles.rowFree : styles.rowSealed );
 			rows.push(
 				el(
 					'div',
 					{
-						key: label.key,
+						key: unit.key,
 						style: rowStyle,
 						ref: function ( node ) {
 							rowRefs.current[ i ] = node;
 						},
 					},
-					el( 'span', { style: styles.badge }, label.name ),
-					label.snippet || el( 'em', null, __( '(no text)', 'crawlertoll' ) )
+					el( 'span', { style: styles.badge }, unit.name ),
+					unit.snippet || el( 'em', null, __( '(no text)', 'crawlertoll' ) )
 				)
 			);
 			// A cut boundary sits after every row. The ACTIVE cut gets the drag
@@ -264,10 +299,10 @@
 			}
 		} );
 
-		var freeBlocks = cut === 0 ? blocks.slice( 0, 1 ) : blocks.slice( 0, cut );
-		var sealedBlocks = cut === 0 ? blocks.slice( 1 ) : blocks.slice( cut );
-		var freeWords = wordCount( freeBlocks );
-		var sealedWords = wordCount( sealedBlocks );
+		var freeUnits = cut === 0 ? units.slice( 0, 1 ) : units.slice( 0, cut );
+		var sealedUnits = cut === 0 ? units.slice( 1 ) : units.slice( cut );
+		var freeWords = freeUnits.reduce( function ( s, u ) { return s + u.words; }, 0 );
+		var sealedWords = sealedUnits.reduce( function ( s, u ) { return s + u.words; }, 0 );
 
 		var children = [];
 		if ( n === 0 ) {
@@ -282,7 +317,7 @@
 				el( 'div', { style: styles.outline, key: 'outline' }, rows ),
 				el( 'p', { style: styles.counts, key: 'counts' },
 					( cut === 0
-						? __( 'Automatic cut (after the first block, or at a <!--more--> marker). ', 'crawlertoll' )
+						? __( 'Automatic cut (after the first block/paragraph, or at a <!--more--> marker). ', 'crawlertoll' )
 						: '' ) +
 					__( 'Free: ', 'crawlertoll' ) + freeWords + __( ' words · Sealed: ', 'crawlertoll' ) + sealedWords + __( ' words', 'crawlertoll' ) )
 			);

@@ -274,12 +274,17 @@ class CrawlerToll_Cut {
 
 	/**
 	 * Classic editor fallback: a numeric "seal after paragraph N" box on the
-	 * post screen (only renders its input for premium posts; the panel checks
-	 * live in JS for Gutenberg, here we check the stored meta).
+	 * post screen. Skipped when the block editor is active — there the
+	 * Gutenberg sidebar panel (drag bar) is the UI, and rendering both is
+	 * duplicate clutter (Chris QA 2026-08-29).
 	 *
 	 * @return void
 	 */
 	public static function add_classic_metabox() {
+		$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
+		if ( $screen && method_exists( $screen, 'is_block_editor' ) && $screen->is_block_editor() ) {
+			return;
+		}
 		add_meta_box(
 			'crawlertoll-cut',
 			__( 'CrawlerToll — Paywall cut', 'crawlertoll' ),
