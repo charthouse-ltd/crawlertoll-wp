@@ -52,7 +52,12 @@ ck( strpos( $panels, 'onPointerDown' ) !== false && strpos( $panels, 'onPointerM
 ck( strpos( $panels, 'onKeyDown' ) !== false, 'keyboard adjustment (accessibility) implemented' );
 ck( strpos( $panels, 'currentTarget' ) !== false, 'drag pointer capture on the divider itself (not a child)' );
 ck( strpos( $panels, 'displayCut' ) !== false, 'bar always rendered (auto mode shows dashed bar, never vanishes)' );
-ck( strpos( $panels, 'editor.BlockListBlock' ) !== false && strpos( $panels, 'addFilter' ) !== false, 'in-canvas "sealed from here" marker filter registered' );
+ck( strpos( $panels, 'editor.BlockEdit' ) !== false && strpos( $panels, 'addFilter' ) !== false, 'in-canvas cut visualization filter registered (draggable marker + dim + fade)' );
+ck( strpos( $panels, 'maskImage' ) !== false, 'last free block fades at the cut in the editor' );
+ck( strpos( $panels, 'ghostLine' ) !== false, 'in-canvas drag shows a live ghost line' );
+ck( strpos( $gate, 'crawlertoll-fade-preview' ) !== false, 'front-end preview fades into the wall' );
+$unlocksrc = (string) file_get_contents( $dir . '/ui/src/unlock/App.tsx' );
+ck( strpos( $unlocksrc, 'crawlertoll-fade-preview' ) !== false, 'unlock app strips the preview fade after unlock' );
 
 // E — Wall preview admin tab.
 ck( strpos( $admin, "'preview'" ) !== false, 'Wall preview tab registered' );

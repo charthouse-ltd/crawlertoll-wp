@@ -371,19 +371,34 @@
 
 	wp.plugins.registerPlugin( 'crawlertoll-cut', { render: CutPanel, icon: 'lock' } );
 
-	// ── In-canvas cut marker ───────────────────────────────────────────────
-	// Renders a dashed "sealed from here" line directly in the editor canvas
-	// above the first sealed block, so the publisher sees the cut while
-	// writing — not only in the sidebar. Block posts only: classic posts are
-	// a single Classic block, so their paragraph-level cut stays in the
-	// sidebar outline. The marker is non-editable chrome, never post content.
+	// ── In-canvas cut visualization ────────────────────────────────────────
+	// Three layers, all driven by the same _crawlertoll_cut meta:
+	//  1. a dashed "sealed from here" line above the first sealed block that
+	//     is itself DRAGGABLE — pull it up/down the text to move the cut
+	//     (a solid ghost line follows the pointer; the meta updates on drop);
+	//  2. sealed blocks are dimmed/grayscaled so the publisher sees exactly
+	//     what readers will NOT get for free;
+	//  3. the last free block fades out at its bottom edge, mirroring the
+	//     front-end paywall fade (mask-based, theme-background independent).
+	// Block posts only: classic posts are a single Classic block, so their
+	// paragraph-level cut stays in the sidebar outline. All of this is
+	// non-editable chrome, never post content.
 	if ( wp.hooks && wp.compose ) {
-		var markerStyles = {
-			wrap: { display: 'flex', alignItems: 'center', gap: 8, margin: '2px 0 6px', userSelect: 'none' },
+		var vizStyles = {
+			marker: { display: 'flex', alignItems: 'center', gap: 8, margin: '2px 0 6px', userSelect: 'none', cursor: 'ns-resize', touchAction: 'none' },
 			line: { flex: 1, borderTop: '2px dashed #b32d2e' },
 			tag: { fontSize: 11, fontWeight: 600, color: '#b32d2e', whiteSpace: 'nowrap', fontFamily: 'sans-serif' },
+			dim: { opacity: 0.42, filter: 'grayscale(0.35)' },
+			fade: {
+				WebkitMaskImage: 'linear-gradient(to bottom, #000 30%, rgba(0,0,0,0) 96%)',
+				maskImage: 'linear-gradient(to bottom, #000 30%, rgba(0,0,0,0) 96%)',
+			},
+			ghost: { position: 'fixed', height: 14, marginTop: -7, zIndex: 99999, pointerEvents: 'none', display: 'flex', alignItems: 'center', gap: 8 },
+			ghostLine: { flex: 1, borderTop: '2px solid #2271b1' },
+			ghostTag: { fontSize: 10, fontWeight: 700, color: '#fff', background: '#2271b1', borderRadius: 8, padding: '0 8px', lineHeight: '14px', whiteSpace: 'nowrap', fontFamily: 'sans-serif' },
 		};
-		var withCutMarker = wp.compose.createHigherOrderComponent( function ( BlockListBlock ) {
+
+		var withCutViz = wp.compose.createHigherOrderComponent( function ( BlockEdit ) {
 			return function ( props ) {
 				var info = wp.data.useSelect( function ( select ) {
 					var editor = select( 'core/editor' );
@@ -403,29 +418,129 @@
 						total: be.getBlockCount ? be.getBlockCount() : ( be.getBlocks() || [] ).length,
 					};
 				}, [ props.clientId ] );
+				var dragPair = useState( null ); // { y, idx, left, width } while dragging
+				var drag = dragPair[ 0 ];
+				var setDrag = dragPair[ 1 ];
 
-				var marker = null;
 				// The cut seals AFTER unit N → the first sealed block sits at
 				// 0-based index N (automatic mode: after block 1 → index 1).
 				var sealedFrom = info.cut > 0 ? info.cut : 1;
-				if ( info.premium && info.blockMarkup && info.isTopLevel && info.index === sealedFrom && sealedFrom < info.total ) {
+				var applicable = info.premium && info.blockMarkup && info.isTopLevel && info.total > 1 && sealedFrom < info.total;
+				var isSealed = applicable && info.index >= sealedFrom;
+				var isLastFree = applicable && info.index === sealedFrom - 1;
+
+				// Top-level block DOM siblings, found by climbing from our own
+				// block — no reliance on Gutenberg's internal class names.
+				function topLevelSiblings( node ) {
+					var own = node.closest ? node.closest( '[data-block]' ) : null;
+					if ( ! own || ! own.parentElement ) {
+						return [];
+					}
+					return Array.prototype.slice.call( own.parentElement.children ).filter( function ( c ) {
+						return c.hasAttribute && c.hasAttribute( 'data-block' );
+					} );
+				}
+				function candidateFromY( clientY, sibs ) {
+					var idx = 1;
+					for ( var i = 0; i < sibs.length; i++ ) {
+						var r = sibs[ i ].getBoundingClientRect();
+						if ( clientY > r.top + r.height / 2 ) {
+							idx = i + 1;
+						}
+					}
+					if ( idx < 1 ) {
+						idx = 1;
+					}
+					if ( idx > info.total ) {
+						idx = info.total;
+					}
+					return idx;
+				}
+				function onMarkerDown( e ) {
+					e.preventDefault();
+					e.stopPropagation();
+					var t = e.currentTarget;
+					t.setPointerCapture && t.setPointerCapture( e.pointerId );
+					var sibs = topLevelSiblings( t );
+					var rect = { left: 0, width: window.innerWidth };
+					if ( sibs.length && sibs[ 0 ].parentElement ) {
+						var pr = sibs[ 0 ].parentElement.getBoundingClientRect();
+						rect = { left: pr.left, width: pr.width };
+					}
+					setDrag( { y: e.clientY, idx: sealedFrom, left: rect.left, width: rect.width } );
+				}
+				function onMarkerMove( e ) {
+					if ( ! drag ) {
+						return;
+					}
+					setDrag( {
+						y: e.clientY,
+						idx: candidateFromY( e.clientY, topLevelSiblings( e.currentTarget ) ),
+						left: drag.left,
+						width: drag.width,
+					} );
+				}
+				function onMarkerUp( e ) {
+					if ( ! drag ) {
+						return;
+					}
+					var idx = candidateFromY( e.clientY, topLevelSiblings( e.currentTarget ) );
+					setDrag( null );
+					if ( idx !== info.cut ) {
+						wp.data.dispatch( 'core/editor' ).editPost( { meta: { _crawlertoll_cut: idx } } );
+					}
+				}
+
+				var marker = null;
+				if ( applicable && info.index === sealedFrom ) {
 					marker = el(
 						'div',
-						{ style: markerStyles.wrap, contentEditable: 'false' },
-						el( 'span', { style: markerStyles.line } ),
+						{
+							style: vizStyles.marker,
+							contentEditable: 'false',
+							title: __( 'Drag to move the paywall cut', 'crawlertoll' ),
+							onPointerDown: onMarkerDown,
+							onPointerMove: onMarkerMove,
+							onPointerUp: onMarkerUp,
+						},
+						el( 'span', { style: vizStyles.line } ),
 						el(
 							'span',
-							{ style: markerStyles.tag },
+							{ style: vizStyles.tag },
 							'🔒 ' + ( info.cut > 0
-								? __( 'Sealed from here — readers pay or use a free read', 'crawlertoll' )
-								: __( 'Automatic cut — sealed from here', 'crawlertoll' ) )
+								? __( 'Sealed from here', 'crawlertoll' )
+								: __( 'Automatic cut — sealed from here', 'crawlertoll' ) ) + ' · ' + __( 'drag to move', 'crawlertoll' )
 						),
-						el( 'span', { style: markerStyles.line } )
+						el( 'span', { style: vizStyles.line } )
 					);
 				}
-				return el( wp.element.Fragment, null, marker, el( BlockListBlock, props ) );
+				// While dragging, a solid ghost line follows the pointer so the
+				// publisher sees the target position live; the meta (and with it
+				// the marker, dimming and fade) updates on release only — no
+				// undo-history pollution from intermediate positions.
+				var ghost = null;
+				if ( drag ) {
+					ghost = el(
+						'div',
+						{ style: Object.assign( {}, vizStyles.ghost, { top: drag.y, left: drag.left, width: drag.width } ) },
+						el( 'span', { style: vizStyles.ghostLine } ),
+						el( 'span', { style: vizStyles.ghostTag }, '✂ ' + __( 'cut after block ', 'crawlertoll' ) + drag.idx ),
+						el( 'span', { style: vizStyles.ghostLine } )
+					);
+				}
+
+				var wrapStyle = null;
+				if ( isSealed ) {
+					wrapStyle = vizStyles.dim;
+				} else if ( isLastFree ) {
+					wrapStyle = vizStyles.fade;
+				}
+				if ( ! marker && ! wrapStyle && ! ghost ) {
+					return el( BlockEdit, props );
+				}
+				return el( 'div', { style: wrapStyle || undefined }, marker, el( BlockEdit, props ), ghost );
 			};
-		}, 'withCrawlerTollCutMarker' );
-		wp.hooks.addFilter( 'editor.BlockListBlock', 'crawlertoll/cut-marker', withCutMarker );
+		}, 'withCrawlerTollCutViz' );
+		wp.hooks.addFilter( 'editor.BlockEdit', 'crawlertoll/cut-viz', withCutViz );
 	}
 } )( window.wp );

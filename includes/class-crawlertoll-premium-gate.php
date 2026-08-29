@@ -232,6 +232,15 @@ class CrawlerToll_Premium_Gate {
 		}
 		$preview = $this->preview_html( $id );
 		if ( is_singular() && is_main_query() && in_the_loop() && $id === (int) get_queried_object_id() ) {
+			$parts = $this->parts( $id );
+			if ( ! empty( $parts['has_body'] ) ) {
+				// Paywall fade: the preview visually dissolves toward the cut —
+				// the classic paywall pattern. The unlock app strips the mask on
+				// successful unlock (ui/src/unlock/App.tsx), so paying readers
+				// see crisp text. Mask (not overlay) = works on any theme bg.
+				$mask    = '-webkit-mask-image:linear-gradient(to bottom,#000 0%,#000 55%,rgba(0,0,0,0) 100%);mask-image:linear-gradient(to bottom,#000 0%,#000 55%,rgba(0,0,0,0) 100%);';
+				$preview = '<div class="crawlertoll-fade-preview" style="' . esc_attr( $mask ) . '">' . $preview . '</div>';
+			}
 			$preview .= $this->locked_section( $id );
 		}
 		return $preview;

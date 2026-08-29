@@ -120,6 +120,19 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Paywall fade cleanup: the gate wraps the free preview in a masked
+  // ".crawlertoll-fade-preview" div so the text visually dissolves at the
+  // cut. Once unlocked, paying readers get crisp text — strip the mask.
+  useEffect(() => {
+    if (state !== "unlocked") {
+      return;
+    }
+    document.querySelectorAll<HTMLElement>(".crawlertoll-fade-preview").forEach((el) => {
+      el.style.removeProperty("-webkit-mask-image");
+      el.style.removeProperty("mask-image");
+    });
+  }, [state]);
+
   const reveal = async (cek: string, fromCache = false) => {
     if (!blob) {
       return;
