@@ -541,6 +541,15 @@ class CrawlerToll_Plugin {
 			if ( $tiers ) {
 				$rule['tiers'] = $tiers;
 			}
+			// Bundle (Pro, A4, spec §5.5): "sell as bundle" + its own tier rows.
+			// The flag alone is stored; sanitize_bundle() validates on resolve.
+			if ( ! empty( $row['bundle'] ) ) {
+				$rule['bundle'] = true;
+				$btiers = CrawlerToll_Tiers::sanitize_rows( isset( $row['bundle_tiers'] ) ? $row['bundle_tiers'] : null );
+				if ( $btiers ) {
+					$rule['bundle_tiers'] = $btiers;
+				}
+			}
 			$rules[] = $rule;
 		}
 

@@ -10,6 +10,7 @@ function wp_unslash( $x ) { return $x; }
 function url_to_postid( $uri ) { return 1; }            // pretend the URL resolves to a post
 function get_post_field( $f, $id ) { return "SECRET ARTICLE BODY for post $id"; }
 function wp_parse_url( $u, $c = -1 ) { return parse_url( $u, $c ); }
+function get_permalink( $id ) { return 'http://example.test/hello-world/'; } // A4: gates resolve url_path for scoped passes
 function get_post_meta( $id, $k, $single = false ) { return ''; }   // cache miss → seal fresh
 function update_post_meta( $id, $k, $v ) { return true; }
 function home_url( $p = '' ) { return 'http://example.test' . $p; }

@@ -102,6 +102,10 @@ class CrawlerToll_Sealed_Gate {
 		$meter  = CrawlerToll_Meter::resolve_for_post( $post_id, $settings );
 		// Access tiers (Pro, A2): per-path price×duration set from the permalink.
 		$tiers  = CrawlerToll_Tiers::resolve_for_post( $post_id, $settings );
+		// Bundle (Pro, A4, spec §5.5): the winning rule's whole-path offer; and
+		// the permalink path this content seals under (scoped-pass matching).
+		$bundle   = CrawlerToll_Tiers::resolve_bundle_for_post( $post_id, $settings );
+		$url_path = CrawlerToll_Tiers::url_path_for_post( $post_id );
 		$cached = get_post_meta( $post_id, self::META_KEY, true );
 		if ( is_array( $cached ) && isset( $cached['hash'], $cached['blob'] ) && $cached['hash'] === $hash ) {
 			// Reprice without re-sealing when the commercial terms changed (audit
@@ -113,13 +117,19 @@ class CrawlerToll_Sealed_Gate {
 			$meters_differ = wp_json_encode( $cached_meter ) !== wp_json_encode( $meter );
 			$cached_tiers  = isset( $cached['tiers'] ) ? $cached['tiers'] : null;
 			$tiers_differ  = wp_json_encode( $cached_tiers ) !== wp_json_encode( $tiers );
-			if ( $cached_price !== $price || $cached_curr !== $curr || $meters_differ || $tiers_differ ) {
+			$cached_bundle    = isset( $cached['bundle'] ) ? $cached['bundle'] : null;
+			$bundle_differ    = wp_json_encode( $cached_bundle ) !== wp_json_encode( $bundle );
+			$cached_url_path  = isset( $cached['url_path'] ) ? $cached['url_path'] : null;
+			$url_path_differs = $cached_url_path !== $url_path;
+			if ( $cached_price !== $price || $cached_curr !== $curr || $meters_differ || $tiers_differ || $bundle_differ || $url_path_differs ) {
 				$res = ( new CrawlerToll_Registry() )->update_sealed_price(
 					$cid,
 					$price,
 					$curr,
 					$meters_differ ? $meter : false,
-					$tiers_differ ? $tiers : false
+					$tiers_differ ? $tiers : false,
+					$bundle_differ ? ( null === $bundle ? null : $bundle ) : false,
+					$url_path_differs ? ( null === $url_path ? null : $url_path ) : false
 				);
 				if ( ! is_wp_error( $res ) ) {
 					$cached['price_micros'] = $price;
@@ -129,6 +139,12 @@ class CrawlerToll_Sealed_Gate {
 					}
 					if ( $tiers_differ ) {
 						$cached['tiers'] = $tiers;
+					}
+					if ( $bundle_differ ) {
+						$cached['bundle'] = $bundle;
+					}
+					if ( $url_path_differs ) {
+						$cached['url_path'] = $url_path;
 					}
 					update_post_meta( $post_id, self::META_KEY, $cached );
 				}
@@ -152,7 +168,9 @@ class CrawlerToll_Sealed_Gate {
 			$curr,
 			'full',
 			$meter,
-			$tiers
+			$tiers,
+			$bundle,
+			$url_path
 		);
 		if ( is_wp_error( $result ) || empty( $result['status'] ) || 'registered' !== $result['status'] ) {
 			return false;
@@ -169,6 +187,8 @@ class CrawlerToll_Sealed_Gate {
 				'currency'      => $curr,
 				'meter'         => $meter,
 				'tiers'         => $tiers,
+				'bundle'        => $bundle,
+				'url_path'      => $url_path,
 				'registered_at' => current_time( 'mysql' ),
 			)
 		);

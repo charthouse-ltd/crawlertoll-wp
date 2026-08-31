@@ -16,7 +16,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 // Render saved rules followed by 3 blank rows for new entries — no JS needed,
 // blank paths are skipped on save (clear a path + save to delete its rule).
-$blank   = array( 'path' => '', 'price_micros' => '', 'currency' => $site_currency, 'meter_count' => '', 'meter_window' => '', 'tiers' => array() );
+$blank   = array( 'path' => '', 'price_micros' => '', 'currency' => $site_currency, 'meter_count' => '', 'meter_window' => '', 'tiers' => array(), 'bundle' => false, 'bundle_tiers' => array() );
 $display = array_merge( $rules, array( $blank, $blank, $blank ) );
 
 // Access tiers (A2): duration select choices. Stored as duration_hours
@@ -40,6 +40,9 @@ $ct_dur_choices = array(
 	<p class="description" style="max-width:640px;">
 		<?php esc_html_e( 'Access tiers: offer temporary access at a lower price. Readers who pick 24 hours can return within 24 h without paying again; after that they are asked to renew. Add up to 4 price rows per rule — the reader sees one button per row. Blank price = row unused; no rows at all = the flat single price above, with no expiry.', 'crawlertoll' ); ?>
 	</p>
+	<p class="description" style="max-width:640px;">
+		<?php esc_html_e( 'Bundle: sell one pass that covers EVERYTHING under this path (e.g. all of /reviews/* or, with /, the whole site). The reader pays once and roams every covered article for the chosen duration — your single-article prices stay on the wall beside it. Tick "Sell a bundle" and add its price rows (priced like tiers, usually higher than a single article). Articles a reader already bought separately are not refunded or credited.', 'crawlertoll' ); ?>
+	</p>
 	<p class="description">
 		<?php
 		printf(
@@ -62,6 +65,7 @@ $ct_dur_choices = array(
 					<th><?php esc_html_e( 'Free articles', 'crawlertoll' ); ?></th>
 					<th><?php esc_html_e( 'Window (days)', 'crawlertoll' ); ?></th>
 					<th style="width:30%;"><?php esc_html_e( 'Access tiers (price micros → access duration)', 'crawlertoll' ); ?></th>
+					<th style="width:26%;"><?php esc_html_e( 'Bundle (whole-path pass)', 'crawlertoll' ); ?></th>
 				</tr>
 			</thead>
 			<tbody>
@@ -111,6 +115,39 @@ $ct_dur_choices = array(
 										<?php endforeach; ?>
 									</select>
 									<input type="number" min="1" max="365" step="1" name="ct_tier_custom[<?php echo esc_attr( (string) $i ); ?>][]" value="<?php echo esc_attr( $t_cus ); ?>" placeholder="days" style="width:60px;" title="<?php esc_attr_e( 'Custom duration in days (only used with “Custom days”)', 'crawlertoll' ); ?>" />
+								</div>
+							<?php endfor; ?>
+						</td>
+						<td>
+							<label style="display:block;margin-bottom:4px;">
+								<input type="checkbox" name="ct_bundle[<?php echo esc_attr( (string) $i ); ?>]" value="1" <?php checked( ! empty( $rule['bundle'] ) ); ?> />
+								<?php esc_html_e( 'Sell a bundle', 'crawlertoll' ); ?>
+							</label>
+							<?php
+							$r_btiers = ( isset( $rule['bundle_tiers'] ) && is_array( $rule['bundle_tiers'] ) ) ? $rule['bundle_tiers'] : array();
+							for ( $j = 0; $j < 4; $j++ ) :
+								$b       = isset( $r_btiers[ $j ] ) && is_array( $r_btiers[ $j ] ) ? $r_btiers[ $j ] : null;
+								$b_price = $b && isset( $b['price_micros'] ) ? (string) (int) $b['price_micros'] : '';
+								$b_durh  = $b && array_key_exists( 'duration_hours', $b ) ? $b['duration_hours'] : null;
+								if ( null === $b_durh ) {
+									$b_sel = 'none';
+									$b_cus = '';
+								} elseif ( in_array( (int) $b_durh, array( 24, 168, 720 ), true ) ) {
+									$b_sel = (string) (int) $b_durh;
+									$b_cus = '';
+								} else {
+									$b_sel = 'custom';
+									$b_cus = (string) max( 1, (int) round( (int) $b_durh / 24 ) );
+								}
+								?>
+								<div style="display:flex;gap:4px;align-items:center;margin-bottom:3px;">
+									<input type="number" min="0" step="1" name="ct_bundle_price[<?php echo esc_attr( (string) $i ); ?>][]" value="<?php echo esc_attr( $b_price ); ?>" placeholder="micros" style="width:80px;" />
+									<select name="ct_bundle_dur[<?php echo esc_attr( (string) $i ); ?>][]">
+										<?php foreach ( $ct_dur_choices as $val => $label ) : ?>
+											<option value="<?php echo esc_attr( $val ); ?>" <?php selected( $b_sel, $val ); ?>><?php echo esc_html( $label ); ?></option>
+										<?php endforeach; ?>
+									</select>
+									<input type="number" min="1" max="365" step="1" name="ct_bundle_custom[<?php echo esc_attr( (string) $i ); ?>][]" value="<?php echo esc_attr( $b_cus ); ?>" placeholder="days" style="width:60px;" title="<?php esc_attr_e( 'Custom duration in days (only used with “Custom days”)', 'crawlertoll' ); ?>" />
 								</div>
 							<?php endfor; ?>
 						</td>

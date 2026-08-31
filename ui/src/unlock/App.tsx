@@ -57,6 +57,44 @@ function cekClear(contentId: string): void {
   }
 }
 
+// A4: bundle roaming. A scoped (bundle) pass unlocks EVERY article under its
+// scope_path — but the wall can only learn that by asking the registry. We keep
+// a small cross-article list of recently held pass_ids and, on a per-article
+// cache miss, re-present them silently: the first one the registry accepts for
+// this content_id releases the CEK. Single-article passes answer
+// pass_content_mismatch (a cheap, rate-limited read) and we try the next.
+const PASS_LIST_KEY = "ct:passes";
+const PASS_LIST_CAP = 20;
+const PASS_ROAM_TRIES = 5;
+function passListRead(): string[] {
+  try {
+    const raw = window.localStorage?.getItem(PASS_LIST_KEY);
+    if (!raw) {
+      return [];
+    }
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((p): p is string => typeof p === "string") : [];
+  } catch {
+    return []; // storage blocked (private mode) — roaming off, cache still works
+  }
+}
+function passListPush(passId: string): void {
+  try {
+    const list = passListRead().filter((p) => p !== passId);
+    list.unshift(passId); // most-recent first: likeliest to be tried first
+    window.localStorage?.setItem(PASS_LIST_KEY, JSON.stringify(list.slice(0, PASS_LIST_CAP)));
+  } catch {
+    /* storage blocked — session-only roaming, acceptable degradation */
+  }
+}
+function passListDrop(passId: string): void {
+  try {
+    window.localStorage?.setItem(PASS_LIST_KEY, JSON.stringify(passListRead().filter((p) => p !== passId)));
+  } catch {
+    /* ignore */
+  }
+}
+
 const card: CSSProperties = {
   border: "1px solid var(--ct-border)",
   background: "var(--ct-surface)",
@@ -204,6 +242,11 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
       // from this cache. The settlement pass rides along (A1): it is the
       // re-access proof when this cache entry expires or partially survives.
       cekSet(contentId, cek, pass);
+      // A4: remember the pass cross-article — a scoped (bundle) pass released
+      // here also covers every other article under its scope_path (roaming).
+      if (pass?.pass_id) {
+        passListPush(pass.pass_id);
+      }
     }
     try {
       setBodyHtml(sanitizeBody(await unseal(blob, cek)));
@@ -226,6 +269,28 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
     }
   };
 
+  // A4: bundle roaming. On a per-article cache miss, silently re-present the
+  // most recently held passes — the registry accepts a SCOPED (bundle) pass
+  // whose scope covers this article and releases its CEK; anything else fails
+  // closed and we try the next. The wall stays fully visible the whole time and
+  // simply unlocks if a pass hits; failures never surface to the reader.
+  const roamWithPasses = async () => {
+    const candidates = passListRead().slice(0, PASS_ROAM_TRIES);
+    for (const pid of candidates) {
+      try {
+        const r = await renewPass(contentId, pid);
+        setRenewNote("");
+        await reveal(r.cek, false, r.pass ?? { pass_id: pid, expires_at: null });
+        return; // unlocked — done
+      } catch (e) {
+        if (e instanceof UnlockError && e.code === "pass_expired") {
+          passListDrop(pid); // dead pass — don't waste a roam try on it again
+        }
+        /* not valid for this article — try the next pass */
+      }
+    }
+  };
+
   // A1: silent renewal. The cache entry expired (duration-limited access) but
   // the settlement pass may still be valid — re-present it for a fresh CEK,
   // no new payment. On pass_expired the wall returns (it IS the renew path:
@@ -241,31 +306,40 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
       cekClear(contentId);
       if (e instanceof UnlockError && e.code === "pass_expired") {
         setRenewNote("Your access to this article has ended — renew below.");
+        passListDrop(passId);
       }
       setState("idle");
+      // A4: this article's own pass is dead, but a bundle pass from ANOTHER
+      // article may still cover it — roam before showing the paywall as final.
+      void roamWithPasses();
     } finally {
       setRenewing(false);
     }
   };
 
   // Returning reader: a previously released CEK unlocks instantly, no payment.
-  // An EXPIRED cache entry tries the silent pass renewal before giving up.
+  // An EXPIRED cache entry tries the silent pass renewal before giving up, and
+  // a straight miss roams recent passes (A4 bundle coverage).
   useEffect(() => {
     if (!ready) {
       return;
     }
     const cached = cekRead(contentId);
-    if (!cached) {
-      return;
-    }
-    if (cached.e && Date.now() > Date.parse(cached.e)) {
-      cekClear(contentId); // the dead CEK is worthless…
-      if (cached.p) {
-        void renewWithPass(cached.p); // …but the pass may still be valid
+    if (cached) {
+      if (cached.e && Date.now() > Date.parse(cached.e)) {
+        cekClear(contentId); // the dead CEK is worthless…
+        if (cached.p) {
+          void renewWithPass(cached.p); // …but the pass may still be valid
+          return;
+        }
+      } else {
+        void reveal(cached.c, true);
+        return;
       }
-      return;
     }
-    void reveal(cached.c, true);
+    // No usable per-article cache — a bundle pass held from another article
+    // may cover this one. Silent; the wall renders normally in the meantime.
+    void roamWithPasses();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

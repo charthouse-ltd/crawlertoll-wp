@@ -30,6 +30,8 @@ interface Row {
   freeArticles: string; // "" = off, "3" = 3 free reads per window
   windowDays: string; // "" = 30
   tiers: TierRow[]; // access tiers (A2) — empty = legacy single price
+  bundle: boolean; // bundle pass (A4) — sell whole-section access
+  bundleTiers: TierRow[]; // bundle price rows (only offered when bundle is on)
 }
 
 const DUR_CHOICES: Array<[string, string]> = [
@@ -67,6 +69,88 @@ function tierFromRow(t: TierRow): { price_micros: number; duration_hours: number
   return { price_micros: Math.round(parsed * 1_000_000), duration_hours: dur };
 }
 
+/** Shared price×duration rows editor — used for access tiers (A2) and bundle
+ *  prices (A4). Owns row add/update/remove and reports whole-array changes. */
+function TierRows({
+  sym,
+  tiers,
+  onChange,
+  addNoun,
+}: {
+  sym: string;
+  tiers: TierRow[];
+  onChange: (tiers: TierRow[]) => void;
+  addNoun: string;
+}) {
+  const updateTier = (j: number, patch: Partial<TierRow>) =>
+    onChange(tiers.map((t, l) => (l === j ? { ...t, ...patch } : t)));
+  const addTier = () => {
+    if (tiers.length < 4) {
+      onChange([...tiers, { amount: "", duration: "none", customDays: "" }]);
+    }
+  };
+  const removeTier = (j: number) => onChange(tiers.filter((_, l) => l !== j));
+  return (
+    <>
+      {tiers.map((t, j) => (
+        <div key={j} className="mt-2 grid items-center gap-2 sm:grid-cols-[130px_150px_110px_30px]">
+          <div className="flex items-center gap-1">
+            <span className="text-[13px] font-semibold" style={{ color: "var(--ct-muted)" }}>{sym}</span>
+            <input
+              style={inputStyle}
+              type="number"
+              min={0}
+              step="0.0001"
+              placeholder="0.005"
+              value={t.amount}
+              onChange={(e) => updateTier(j, { amount: e.target.value })}
+            />
+          </div>
+          <select style={inputStyle} value={t.duration} onChange={(e) => updateTier(j, { duration: e.target.value })}>
+            {DUR_CHOICES.map(([v, label]) => (
+              <option key={v} value={v}>{label}</option>
+            ))}
+          </select>
+          {t.duration === "custom" ? (
+            <input
+              style={inputStyle}
+              type="number"
+              min={1}
+              max={365}
+              step={1}
+              placeholder="days"
+              value={t.customDays}
+              onChange={(e) => updateTier(j, { customDays: e.target.value })}
+            />
+          ) : (
+            <span />
+          )}
+          <button
+            type="button"
+            onClick={() => removeTier(j)}
+            aria-label="Remove row"
+            title="Remove row"
+            className="rounded-lg py-1 text-[14px] font-bold"
+            style={{ border: "1px solid var(--ct-border)", background: "var(--ct-surface)", color: "var(--ct-muted)" }}
+          >
+            ×
+          </button>
+        </div>
+      ))}
+      {tiers.length < 4 && (
+        <button
+          type="button"
+          onClick={addTier}
+          className="mt-2 rounded-lg px-3 py-1 text-[12px] font-semibold"
+          style={{ border: "1px dashed var(--ct-border)", background: "transparent", color: "var(--ct-accent)" }}
+        >
+          + Add a {addNoun}{4 - tiers.length < 4 ? ` (${4 - tiers.length} left)` : ""}
+        </button>
+      )}
+    </>
+  );
+}
+
 function toRow(r: PathRule, currency: string): Row {
   void currency;
   return {
@@ -75,6 +159,8 @@ function toRow(r: PathRule, currency: string): Row {
     freeArticles: r.meter_count ? String(Number(r.meter_count)) : "",
     windowDays: r.meter_window ? String(Number(r.meter_window)) : "",
     tiers: Array.isArray(r.tiers) ? r.tiers.map(tierToRow) : [],
+    bundle: r.bundle === true,
+    bundleTiers: Array.isArray(r.bundle_tiers) ? r.bundle_tiers.map(tierToRow) : [],
   };
 }
 
@@ -91,6 +177,15 @@ function toRule(r: Row, fallbackMicros: number, currency: string): PathRule {
   const tiers = r.tiers.map(tierFromRow).filter((t): t is NonNullable<typeof t> => t !== null).slice(0, 4);
   if (tiers.length > 0) {
     rule.tiers = tiers;
+  }
+  // Bundle (A4): only serialized when the checkbox is on AND at least one
+  // valid price row exists — no rows means the bundle isn't offered.
+  if (r.bundle) {
+    const btiers = r.bundleTiers.map(tierFromRow).filter((t): t is NonNullable<typeof t> => t !== null).slice(0, 4);
+    if (btiers.length > 0) {
+      rule.bundle = true;
+      rule.bundle_tiers = btiers;
+    }
   }
   return rule;
 }
@@ -114,20 +209,18 @@ function PricingForm({ settings }: { settings: SettingsResponse }) {
   const update = (i: number, patch: Partial<Row>) => setRows((rs) => rs.map((r, j) => (j === i ? { ...r, ...patch } : r)));
   const remove = (i: number) => setRows((rs) => rs.filter((_, j) => j !== i));
   const add = () =>
-    setRows((rs) => [...rs, { path: "", amount: (settings.price_micros / 1_000_000).toString(), freeArticles: "", windowDays: "", tiers: [] }]);
-
-  const updateTier = (i: number, j: number, patch: Partial<TierRow>) =>
-    setRows((rs) => rs.map((r, k) => (k === i ? { ...r, tiers: r.tiers.map((t, l) => (l === j ? { ...t, ...patch } : t)) } : r)));
-  const addTier = (i: number) =>
-    setRows((rs) =>
-      rs.map((r, k) =>
-        k === i && r.tiers.length < 4
-          ? { ...r, tiers: [...r.tiers, { amount: "", duration: "none", customDays: "" }] }
-          : r,
-      ),
-    );
-  const removeTier = (i: number, j: number) =>
-    setRows((rs) => rs.map((r, k) => (k === i ? { ...r, tiers: r.tiers.filter((_, l) => l !== j) } : r)));
+    setRows((rs) => [
+      ...rs,
+      {
+        path: "",
+        amount: (settings.price_micros / 1_000_000).toString(),
+        freeArticles: "",
+        windowDays: "",
+        tiers: [],
+        bundle: false,
+        bundleTiers: [],
+      },
+    ]);
 
   return (
     <Card>
@@ -239,60 +332,39 @@ function PricingForm({ settings }: { settings: SettingsResponse }) {
                 paying again; after that they're asked to renew. One button per row on the paywall — no rows means the
                 single price above, with no expiry.
               </p>
-              {r.tiers.map((t, j) => (
-                <div key={j} className="mt-2 grid items-center gap-2 sm:grid-cols-[130px_150px_110px_30px]">
-                  <div className="flex items-center gap-1">
-                    <span className="text-[13px] font-semibold" style={{ color: "var(--ct-muted)" }}>{sym}</span>
-                    <input
-                      style={inputStyle}
-                      type="number"
-                      min={0}
-                      step="0.0001"
-                      placeholder="0.005"
-                      value={t.amount}
-                      onChange={(e) => updateTier(i, j, { amount: e.target.value })}
-                    />
-                  </div>
-                  <select style={inputStyle} value={t.duration} onChange={(e) => updateTier(i, j, { duration: e.target.value })}>
-                    {DUR_CHOICES.map(([v, label]) => (
-                      <option key={v} value={v}>{label}</option>
-                    ))}
-                  </select>
-                  {t.duration === "custom" ? (
-                    <input
-                      style={inputStyle}
-                      type="number"
-                      min={1}
-                      max={365}
-                      step={1}
-                      placeholder="days"
-                      value={t.customDays}
-                      onChange={(e) => updateTier(i, j, { customDays: e.target.value })}
-                    />
-                  ) : (
-                    <span />
+              <TierRows sym={sym} tiers={r.tiers} onChange={(ts) => update(i, { tiers: ts })} addNoun="tier" />
+            </div>
+
+            {/* Bundle (A4): one pass covering EVERYTHING under this section. */}
+            <div className="mt-3 rounded-lg p-3" style={{ background: "var(--ct-elevated)" }}>
+              <label className="flex items-center gap-2 text-[12px] font-semibold" style={{ cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={r.bundle}
+                  onChange={(e) => update(i, { bundle: e.target.checked })}
+                />
+                Sell a bundle <span style={{ color: "var(--ct-muted)", fontWeight: 400 }}>(optional)</span>
+              </label>
+              <p className="mt-1 text-[12px]" style={{ color: "var(--ct-muted)" }}>
+                One pass that unlocks EVERYTHING under this section — the reader pays once and roams every covered
+                article for the chosen duration. Your single-article prices stay on the paywall beside it, so price
+                the bundle higher than one article. Articles a reader already bought separately are not refunded or
+                credited.
+              </p>
+              {r.bundle && (
+                <>
+                  {r.bundleTiers.length === 0 && (
+                    <p className="mt-2 text-[12px]" style={{ color: "var(--ct-muted)" }}>
+                      Add at least one price row — without one the bundle isn&apos;t offered.
+                    </p>
                   )}
-                  <button
-                    type="button"
-                    onClick={() => removeTier(i, j)}
-                    aria-label="Remove tier"
-                    title="Remove tier"
-                    className="rounded-lg py-1 text-[14px] font-bold"
-                    style={{ border: "1px solid var(--ct-border)", background: "var(--ct-surface)", color: "var(--ct-muted)" }}
-                  >
-                    ×
-                  </button>
-                </div>
-              ))}
-              {r.tiers.length < 4 && (
-                <button
-                  type="button"
-                  onClick={() => addTier(i)}
-                  className="mt-2 rounded-lg px-3 py-1 text-[12px] font-semibold"
-                  style={{ border: "1px dashed var(--ct-border)", background: "transparent", color: "var(--ct-accent)" }}
-                >
-                  + Add a tier{4 - r.tiers.length < 4 ? ` (${4 - r.tiers.length} left)` : ""}
-                </button>
+                  <TierRows
+                    sym={sym}
+                    tiers={r.bundleTiers}
+                    onChange={(ts) => update(i, { bundleTiers: ts })}
+                    addNoun="bundle price"
+                  />
+                </>
               )}
             </div>
           </div>

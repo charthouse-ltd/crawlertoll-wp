@@ -98,6 +98,23 @@ class CrawlerToll_Tiers {
 	 * @return array<int,array{price_micros:int,duration_hours:int|null}>|null
 	 */
 	public static function resolve_for_path( $path, $settings ) {
+		$rule = self::matching_rule( $path, $settings );
+		if ( null === $rule ) {
+			return null;
+		}
+		// The winning rule governs — no fall-through to shorter rules.
+		return isset( $rule['tiers'] ) ? self::sanitize_rows( $rule['tiers'] ) : null;
+	}
+
+	/**
+	 * The winning rule for a path (longest prefix wins, trailing * wildcard).
+	 * Pure — shared by tiers, bundles, and any future per-path meta.
+	 *
+	 * @param string $path
+	 * @param array  $settings
+	 * @return array|null
+	 */
+	private static function matching_rule( $path, $settings ) {
 		$rules = isset( $settings['path_pricing'] ) && is_array( $settings['path_pricing'] ) ? $settings['path_pricing'] : array();
 		if ( empty( $rules ) ) {
 			return null;
@@ -118,12 +135,65 @@ class CrawlerToll_Tiers {
 			} else {
 				$matched = strpos( $path, $pattern ) === 0;
 			}
-			if ( ! $matched ) {
-				continue;
+			if ( $matched ) {
+				return $rule;
 			}
-			// The winning rule governs — no fall-through to shorter rules.
-			return isset( $rule['tiers'] ) ? self::sanitize_rows( $rule['tiers'] ) : null;
 		}
 		return null;
+	}
+
+	/**
+	 * Bundle (Pro, A4, spec §5.5): a rule marked "sell as bundle" offers a pass
+	 * covering its WHOLE path. Sanitize a stored rule into the registry shape
+	 * {path, tiers} — fail-closed null (a broken bundle config = no bundle).
+	 *
+	 * @param mixed $rule Raw path_pricing rule.
+	 * @return array{path:string,tiers:array}|null
+	 */
+	public static function sanitize_bundle( $rule ) {
+		if ( ! is_array( $rule ) || empty( $rule['bundle'] ) ) {
+			return null;
+		}
+		$path = isset( $rule['path'] ) ? trim( (string) $rule['path'] ) : '';
+		if ( '' === $path || strlen( $path ) > 200 || '/' !== substr( $path, 0, 1 ) ) {
+			return null;
+		}
+		$tiers = self::sanitize_rows( isset( $rule['bundle_tiers'] ) ? $rule['bundle_tiers'] : null );
+		if ( ! $tiers ) {
+			return null;
+		}
+		return array( 'path' => $path, 'tiers' => $tiers );
+	}
+
+	/**
+	 * Resolve the bundle offer for a post being sealed (Pro-gated like tiers).
+	 *
+	 * @param int   $post_id
+	 * @param array $settings
+	 * @return array{path:string,tiers:array}|null
+	 */
+	public static function resolve_bundle_for_post( $post_id, $settings ) {
+		if ( ! class_exists( 'CrawlerToll_Pro_Admin' ) || ! CrawlerToll_Pro_Admin::is_pro_active() ) {
+			return null;
+		}
+		$path = self::url_path_for_post( $post_id );
+		if ( null === $path ) {
+			return null;
+		}
+		$rule = self::matching_rule( $path, $settings );
+		return null === $rule ? null : self::sanitize_bundle( $rule );
+	}
+
+	/**
+	 * The permalink path a post seals under — the registry matches scoped
+	 * (bundle) passes against it (content_id is host/post/N, not a URL path).
+	 *
+	 * @param int $post_id
+	 * @return string|null
+	 */
+	public static function url_path_for_post( $post_id ) {
+		$permalink = get_permalink( (int) $post_id );
+		$path      = $permalink ? wp_parse_url( $permalink, PHP_URL_PATH ) : null;
+		return ( is_string( $path ) && '' !== $path ) ? $path : null;
 	}
 }

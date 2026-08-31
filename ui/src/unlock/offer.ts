@@ -38,6 +38,14 @@ export interface SignedOffer {
   // The client echoes tier_id at redemption; the registry re-derives price AND
   // duration server-side, so client-side values are display-only.
   tiers?: Array<{ tier_id: string; price_micros: number; duration_hours: number | null }>;
+  // Bundle (A4, spec §5.5): whole-path pass, INSIDE the signed offer (the
+  // signature covers it, same as tiers). scope_path is the registry-verified
+  // path pattern this pass roams (e.g. "/" or "/reviews/*"); b-prefixed
+  // tier_ids resolve against the entry's bundle server-side.
+  bundle?: {
+    scope_path: string;
+    tiers: Array<{ tier_id: string; price_micros: number; duration_hours: number | null }>;
+  };
   // Metered free articles (Pro): UNSIGNED sibling of the signed offer — UI state
   // only. Present when this human reader is on a metered path. remaining 0 means
   // the allowance is used up (paid rails only).
@@ -151,6 +159,26 @@ export function offerToRails(offer: SignedOffer, env: UnlockEnv): RailTile[] {
         reason: walletReason,
         priceLabel: fmtMicros(offer.x402.priceMicros, offer.x402.currency),
       });
+    }
+
+    // A4: one tile per bundle tier — buys a pass that roams EVERY article under
+    // bundle.scope_path for the chosen duration. The b-prefixed tier_id flows
+    // into payX402 like any article tier; the registry resolves it against the
+    // entry's signed bundle server-side (price tampering → verification fails).
+    const bundle = offer.bundle;
+    if (bundle && typeof bundle.scope_path === "string" && Array.isArray(bundle.tiers)) {
+      const scopeLabel = bundle.scope_path === "/" ? "the whole site" : `all of ${bundle.scope_path}`;
+      for (const tier of bundle.tiers) {
+        tiles.push({
+          rail: "x402",
+          key: `x402:${tier.tier_id}`,
+          label: `Unlock ${scopeLabel} — ${durationLabel(tier.duration_hours)}`,
+          enabled: true,
+          reason: walletReason,
+          priceLabel: fmtMicros(tier.price_micros, offer.x402.currency),
+          tier,
+        });
+      }
     }
   }
 

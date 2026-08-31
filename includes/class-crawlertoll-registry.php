@@ -127,8 +127,8 @@ class CrawlerToll_Registry {
 	 * @param string $scope
 	 * @return array|WP_Error Decoded JSON, or WP_Error on transport failure.
 	 */
-	public function register_sealed( $content_id, $cek_b64, $price_micros, $currency = 'USDC', $scope = 'full', $meter = null, $tiers = null ) {
-		$response = $this->post_sealed_register( $content_id, $cek_b64, $price_micros, $currency, $scope, $meter, $tiers );
+	public function register_sealed( $content_id, $cek_b64, $price_micros, $currency = 'USDC', $scope = 'full', $meter = null, $tiers = null, $bundle = null, $url_path = null ) {
+		$response = $this->post_sealed_register( $content_id, $cek_b64, $price_micros, $currency, $scope, $meter, $tiers, $bundle, $url_path );
 		if ( is_wp_error( $response ) ) {
 			return $response;
 		}
@@ -144,7 +144,7 @@ class CrawlerToll_Registry {
 			&& in_array( $data['error'], array( 'publisher_not_enrolled', 'invalid_token', 'missing_bearer_token' ), true ) ) {
 			$enroll = $this->register_with_registry();
 			if ( ! is_wp_error( $enroll ) && is_array( $enroll ) && isset( $enroll['status'] ) && 'registered' === $enroll['status'] ) {
-				$response = $this->post_sealed_register( $content_id, $cek_b64, $price_micros, $currency, $scope, $meter, $tiers );
+				$response = $this->post_sealed_register( $content_id, $cek_b64, $price_micros, $currency, $scope, $meter, $tiers, $bundle, $url_path );
 				if ( is_wp_error( $response ) ) {
 					return $response;
 				}
@@ -159,7 +159,7 @@ class CrawlerToll_Registry {
 	 *
 	 * @return array|WP_Error Raw HTTP response, or WP_Error on transport failure.
 	 */
-	private function post_sealed_register( $content_id, $cek_b64, $price_micros, $currency, $scope, $meter = null, $tiers = null ) {
+	private function post_sealed_register( $content_id, $cek_b64, $price_micros, $currency, $scope, $meter = null, $tiers = null, $bundle = null, $url_path = null ) {
 		$settings = wp_parse_args( (array) get_option( CRAWLERTOLL_OPTION_KEY ), crawlertoll_default_settings() );
 		$body     = array(
 			'content_id'   => $content_id,
@@ -182,6 +182,19 @@ class CrawlerToll_Registry {
 		$tiers = CrawlerToll_Tiers::sanitize_rows( $tiers );
 		if ( $tiers ) {
 			$body['tiers'] = $tiers;
+		}
+		// Bundle (Pro, A4, spec §5.5): {path, tiers} — registry-side sanitize is
+		// authoritative; here we just pass through a well-shaped config.
+		if ( is_array( $bundle ) && ! empty( $bundle['path'] ) ) {
+			$btiers = CrawlerToll_Tiers::sanitize_rows( isset( $bundle['tiers'] ) ? $bundle['tiers'] : null );
+			if ( $btiers ) {
+				$body['bundle'] = array( 'path' => (string) $bundle['path'], 'tiers' => $btiers );
+			}
+		}
+		// The permalink path this content seals under — scoped (bundle) passes
+		// match against it at renewal.
+		if ( is_string( $url_path ) && '' !== $url_path && '/' === substr( $url_path, 0, 1 ) ) {
+			$body['url_path'] = $url_path;
 		}
 		// R1.x-a: the publisher's USDC payout address. Without it the registry
 		// advertises x402 with no payee and (in production) fails closed — paid
@@ -254,9 +267,13 @@ class CrawlerToll_Registry {
 	 *                                null disables it, false (default) leaves it untouched.
 	 * @param array|null|false $tiers Access-tier set (A2): array sets it, null
 	 *                                disables it, false (default) leaves untouched.
+	 * @param array|null|false $bundle Bundle config (A4): array sets it, null
+	 *                                 disables it, false (default) leaves untouched.
+	 * @param string|null|false $url_path Permalink path (A4): string sets it, null
+	 *                                 deletes it, false (default) leaves untouched.
 	 * @return array|WP_Error
 	 */
-	public function update_sealed_price( $content_id, $price_micros, $currency, $meter = false, $tiers = false ) {
+	public function update_sealed_price( $content_id, $price_micros, $currency, $meter = false, $tiers = false, $bundle = false, $url_path = false ) {
 		$settings = wp_parse_args( (array) get_option( CRAWLERTOLL_OPTION_KEY ), crawlertoll_default_settings() );
 		$body     = array(
 			'publisher'    => wp_parse_url( home_url(), PHP_URL_HOST ),
@@ -275,6 +292,18 @@ class CrawlerToll_Registry {
 		if ( false !== $tiers ) {
 			$rows = CrawlerToll_Tiers::sanitize_rows( $tiers );
 			$body['tiers'] = $rows ? $rows : null; // Null = explicit disable.
+		}
+		// Bundle + url_path (A4): same tri-state discipline as tiers.
+		if ( false !== $bundle ) {
+			if ( is_array( $bundle ) && ! empty( $bundle['path'] ) ) {
+				$btiers = CrawlerToll_Tiers::sanitize_rows( isset( $bundle['tiers'] ) ? $bundle['tiers'] : null );
+				$body['bundle'] = $btiers ? array( 'path' => (string) $bundle['path'], 'tiers' => $btiers ) : null;
+			} else {
+				$body['bundle'] = null; // Explicit disable.
+			}
+		}
+		if ( false !== $url_path ) {
+			$body['url_path'] = ( is_string( $url_path ) && '' !== $url_path ) ? $url_path : null;
 		}
 		if ( ! empty( $settings['x402_pay_to'] ) && preg_match( '/^0x[0-9a-fA-F]{40}$/', (string) $settings['x402_pay_to'] ) ) {
 			$body['x402_pay_to'] = (string) $settings['x402_pay_to'];

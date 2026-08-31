@@ -384,6 +384,10 @@ class CrawlerToll_Pro_Admin {
 			$tprice = ( isset( $_POST['ct_tier_price'] ) && is_array( $_POST['ct_tier_price'] ) ) ? wp_unslash( $_POST['ct_tier_price'] ) : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- cast below.
 			$tdur   = ( isset( $_POST['ct_tier_dur'] ) && is_array( $_POST['ct_tier_dur'] ) ) ? wp_unslash( $_POST['ct_tier_dur'] ) : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- whitelisted below.
 			$tcustom = ( isset( $_POST['ct_tier_custom'] ) && is_array( $_POST['ct_tier_custom'] ) ) ? wp_unslash( $_POST['ct_tier_custom'] ) : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- cast below.
+			$bflag   = ( isset( $_POST['ct_bundle'] ) && is_array( $_POST['ct_bundle'] ) ) ? wp_unslash( $_POST['ct_bundle'] ) : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- presence check only.
+			$bprice  = ( isset( $_POST['ct_bundle_price'] ) && is_array( $_POST['ct_bundle_price'] ) ) ? wp_unslash( $_POST['ct_bundle_price'] ) : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- cast below.
+			$bdur    = ( isset( $_POST['ct_bundle_dur'] ) && is_array( $_POST['ct_bundle_dur'] ) ) ? wp_unslash( $_POST['ct_bundle_dur'] ) : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- whitelisted below.
+			$bcustom = ( isset( $_POST['ct_bundle_custom'] ) && is_array( $_POST['ct_bundle_custom'] ) ) ? wp_unslash( $_POST['ct_bundle_custom'] ) : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- cast below.
 
 			$rules = array();
 			foreach ( $paths as $i => $p ) {
@@ -427,6 +431,34 @@ class CrawlerToll_Pro_Admin {
 				$tiers = CrawlerToll_Tiers::sanitize_rows( $raw_tiers );
 				if ( $tiers ) {
 					$rule['tiers'] = $tiers;
+				}
+				// Bundle (A4): whole-path pass. Checkbox absent = off. Rows are
+				// parsed exactly like access tiers; the flag is only stored when
+				// at least one valid price row survives (no rows = feature off,
+				// mirroring how tiers behave).
+				if ( ! empty( $bflag[ $i ] ) ) {
+					$raw_btiers = array();
+					for ( $j = 0; $j < 4; $j++ ) {
+						$pj = isset( $bprice[ $i ][ $j ] ) ? (int) $bprice[ $i ][ $j ] : 0;
+						if ( $pj <= 0 ) {
+							continue;
+						}
+						$sel = isset( $bdur[ $i ][ $j ] ) ? (string) $bdur[ $i ][ $j ] : 'none';
+						if ( 'custom' === $sel ) {
+							$days = isset( $bcustom[ $i ][ $j ] ) ? min( 365, max( 1, (int) $bcustom[ $i ][ $j ] ) ) : 30;
+							$dur  = $days * 24;
+						} elseif ( in_array( $sel, array( '24', '168', '720' ), true ) ) {
+							$dur = (int) $sel;
+						} else {
+							$dur = null; // 'none' and anything unexpected = no expiry.
+						}
+						$raw_btiers[] = array( 'price_micros' => $pj, 'duration_hours' => $dur );
+					}
+					$btiers = CrawlerToll_Tiers::sanitize_rows( $raw_btiers );
+					if ( $btiers ) {
+						$rule['bundle']       = true;
+						$rule['bundle_tiers'] = $btiers;
+					}
 				}
 				$rules[] = $rule;
 			}

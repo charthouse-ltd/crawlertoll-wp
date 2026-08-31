@@ -100,6 +100,10 @@ export interface PathRule {
   // Access tiers (Pro, A2): up to 4 price×duration offers. duration_hours
   // null = "no expiry". Absent = legacy single-price.
   tiers?: AccessTier[];
+  // Bundle (Pro, A4): sell one pass covering EVERYTHING under this path.
+  // bundle_tiers are priced like access tiers (usually above single-article).
+  bundle?: boolean;
+  bundle_tiers?: AccessTier[];
 }
 
 export interface AccessTier {
