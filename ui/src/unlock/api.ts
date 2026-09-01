@@ -45,24 +45,161 @@ export class UnlockError extends Error {
 
 // Metered free articles (Pro): the meter token is the reader's anonymous
 // free-allowance identity. One token per metered path; we keep them all in one
-// localStorage map and send the set with every offer fetch — the registry picks
-// the one valid for this site+path. Same storage-blocked degradation as the CEK
-// cache: private mode just means no free-allowance continuity.
+// map and send the set with every offer fetch — the registry picks the one
+// valid for this site+path.
+//
+// M1 (2026-09-01): multi-storage identity. localStorage alone meant a storage
+// wipe (or a private window) silently reset the free-allowance identity — the
+// meter's accepted leak. The token map now lives in THREE stores and heals
+// itself: every read merges localStorage + the first-party cookie + IndexedDB
+// (per-path, most-local wins) and re-populates whichever store lost its copy.
+// A reader clearing one store keeps their allowance; clearing all three gets
+// a fresh vid — that residual leak is capped server-side by the per-IP
+// ceiling (meter.js ipCeilingExceeded, publisher-tunable). All stores degrade
+// silently: private mode just means less continuity, never a broken wall.
 const METER_KEY = "ct:meter";
-function meterTokensRead(): Record<string, unknown> {
+const METER_COOKIE = "ct_meter";
+const METER_COOKIE_MAXAGE = 400 * 24 * 3600; // seconds — browser cap is ~400 days
+const METER_COOKIE_LIMIT = 3800; // stay under the 4 KB per-cookie ceiling
+const METER_IDB_DB = "ct-meter";
+const METER_IDB_STORE = "kv";
+const METER_IDB_KEY = "tokens";
+
+function b64urlEncode(s: string): string {
+  return btoa(unescape(encodeURIComponent(s))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+function b64urlDecode(s: string): string {
+  const pad = s.length % 4 === 0 ? "" : "=".repeat(4 - (s.length % 4));
+  return decodeURIComponent(escape(atob(s.replace(/-/g, "+").replace(/_/g, "/") + pad)));
+}
+function parseTokenMap(raw: string | null | undefined): Record<string, unknown> {
   try {
-    const raw = window.localStorage?.getItem(METER_KEY);
     const parsed = raw ? JSON.parse(raw) : {};
-    return parsed && typeof parsed === "object" ? parsed : {};
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
   } catch {
     return {};
   }
 }
+
+function lsRead(): Record<string, unknown> {
+  try {
+    return parseTokenMap(window.localStorage?.getItem(METER_KEY));
+  } catch {
+    return {};
+  }
+}
+function lsWrite(map: Record<string, unknown>): void {
+  try {
+    window.localStorage?.setItem(METER_KEY, JSON.stringify(map));
+  } catch {
+    /* storage blocked */
+  }
+}
+
+function cookieRead(): Record<string, unknown> {
+  try {
+    const m = document.cookie.match(new RegExp("(?:^|; )" + METER_COOKIE + "=([^;]*)"));
+    return m ? parseTokenMap(b64urlDecode(m[1])) : {};
+  } catch {
+    return {};
+  }
+}
+function cookieWrite(map: Record<string, unknown>): void {
+  try {
+    const keys = Object.keys(map);
+    if (keys.length === 0) return;
+    const enc = b64urlEncode(JSON.stringify(map));
+    if (enc.length > METER_COOKIE_LIMIT) return; // too big — IDB is the surviving backup
+    const secure = window.location.protocol === "https:" ? "; Secure" : "";
+    document.cookie = `${METER_COOKIE}=${enc}; path=/; max-age=${METER_COOKIE_MAXAGE}; SameSite=Lax${secure}`;
+  } catch {
+    /* cookies blocked */
+  }
+}
+
+function idbOpen(): Promise<IDBDatabase | null> {
+  return new Promise((resolve) => {
+    try {
+      if (!window.indexedDB) return resolve(null);
+      const req = window.indexedDB.open(METER_IDB_DB, 1);
+      req.onupgradeneeded = () => {
+        try {
+          req.result.createObjectStore(METER_IDB_STORE);
+        } catch {
+          /* already exists */
+        }
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => resolve(null);
+      req.onblocked = () => resolve(null);
+    } catch {
+      resolve(null);
+    }
+  });
+}
+async function idbRead(): Promise<Record<string, unknown>> {
+  const db = await idbOpen();
+  if (!db) return {};
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction(METER_IDB_STORE, "readonly");
+      const req = tx.objectStore(METER_IDB_STORE).get(METER_IDB_KEY);
+      req.onsuccess = () => resolve(typeof req.result === "string" ? parseTokenMap(req.result) : {});
+      req.onerror = () => resolve({});
+    } catch {
+      resolve({});
+    }
+  });
+}
+async function idbWrite(map: Record<string, unknown>): Promise<void> {
+  const db = await idbOpen();
+  if (!db) return;
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction(METER_IDB_STORE, "readwrite");
+      tx.objectStore(METER_IDB_STORE).put(JSON.stringify(map), METER_IDB_KEY);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => resolve();
+    } catch {
+      resolve();
+    }
+  });
+}
+
+function sameMap(a: Record<string, unknown>, b: Record<string, unknown>): boolean {
+  const ka = Object.keys(a);
+  const kb = Object.keys(b);
+  return ka.length === kb.length && ka.every((k) => JSON.stringify(a[k]) === JSON.stringify(b[k]));
+}
+
+/**
+ * M1: merged read across all three stores, with self-healing — any store
+ * missing entries gets re-populated from the survivors. Per-path precedence:
+ * localStorage > IndexedDB > cookie (the fast store is written most often).
+ */
+export async function meterTokensReadMerged(): Promise<Record<string, unknown>> {
+  const ls = lsRead();
+  const [idb, ck] = await Promise.all([idbRead(), Promise.resolve(cookieRead())]);
+  const merged: Record<string, unknown> = { ...ck, ...idb, ...ls };
+  try {
+    if (!sameMap(merged, ls)) lsWrite(merged);
+    if (!sameMap(merged, ck)) cookieWrite(merged);
+    if (!sameMap(merged, idb)) void idbWrite(merged);
+  } catch {
+    /* healing is best-effort — the merged read itself is what matters */
+  }
+  return merged;
+}
+
 export function meterTokenStore(path: string, token: unknown): void {
   try {
-    const all = meterTokensRead();
+    // Merge with the synchronous stores so a wiped localStorage doesn't cost
+    // the OTHER paths' tokens when the cookie still holds them.
+    const all = { ...cookieRead(), ...lsRead() };
     all[path] = token;
-    window.localStorage?.setItem(METER_KEY, JSON.stringify(all));
+    lsWrite(all);
+    cookieWrite(all);
+    void idbWrite(all);
   } catch {
     /* storage blocked — no meter continuity, meter still works per-visit */
   }
@@ -80,7 +217,10 @@ async function safeFetch(url: string, init?: RequestInit): Promise<Response> {
 
 /** Step A: POST with no proof → the signed 402 offer (authoritative rail set). */
 export async function fetchOffer(contentId: string): Promise<SignedOffer> {
-  const tokens = Object.values(meterTokensRead());
+  // M1: merged multi-storage read — a wiped localStorage restores the meter
+  // identity from the cookie/IndexedDB BEFORE the offer goes out, so the
+  // registry re-mints with the SAME vid instead of issuing a fresh allowance.
+  const tokens = Object.values(await meterTokensReadMerged());
   const res = await safeFetch(keyUrl(contentId), {
     method: "POST",
     headers: { "Content-Type": "application/json" },

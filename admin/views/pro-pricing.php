@@ -16,7 +16,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 // Render saved rules followed by 3 blank rows for new entries — no JS needed,
 // blank paths are skipped on save (clear a path + save to delete its rule).
-$blank   = array( 'path' => '', 'price_micros' => '', 'currency' => $site_currency, 'meter_count' => '', 'meter_window' => '', 'tiers' => array(), 'bundle' => false, 'bundle_tiers' => array(), 'email_gate' => false );
+$blank   = array( 'path' => '', 'price_micros' => '', 'currency' => $site_currency, 'meter_count' => '', 'meter_window' => '', 'meter_ip_ceiling' => '', 'tiers' => array(), 'bundle' => false, 'bundle_tiers' => array(), 'email_gate' => false );
 $display = array_merge( $rules, array( $blank, $blank, $blank ) );
 
 // Access tiers (A2): duration select choices. Stored as duration_hours
@@ -35,7 +35,7 @@ $ct_dur_choices = array(
 		<?php esc_html_e( 'Charge more for premium paths and less for low-value ones. Each rule matches by path prefix — the longest match wins, and a trailing * (e.g. /premium/*) matches everything beneath it. Paths with no rule fall back to your flat price.', 'crawlertoll' ); ?>
 	</p>
 	<p class="description" style="max-width:640px;">
-		<?php esc_html_e( 'Free articles: let each reader open N articles on this path for free before the paywall asks for payment (per rolling window). 0 or blank = paywall from the first article. AI crawlers always pay — the allowance is for human readers only.', 'crawlertoll' ); ?>
+		<?php esc_html_e( 'Free articles: let each reader open N articles on this path for free before the paywall asks for payment (per rolling window). 0 or blank = paywall from the first article. AI crawlers always pay — the allowance is for human readers only. IP ceiling: how many fresh visitors from one internet address may use free reads per day, as a multiple of the free-article count (1–20, blank = 4×). Lower it if readers abuse private windows to reset their allowance.', 'crawlertoll' ); ?>
 	</p>
 	<p class="description" style="max-width:640px;">
 		<?php esc_html_e( 'Access tiers: offer temporary access at a lower price. Readers who pick 24 hours can return within 24 h without paying again; after that they are asked to renew. Add up to 4 price rows per rule — the reader sees one button per row. Blank price = row unused; no rows at all = the flat single price above, with no expiry.', 'crawlertoll' ); ?>
@@ -67,6 +67,7 @@ $ct_dur_choices = array(
 					<th><?php esc_html_e( 'Currency', 'crawlertoll' ); ?></th>
 					<th><?php esc_html_e( 'Free articles', 'crawlertoll' ); ?></th>
 					<th><?php esc_html_e( 'Window (days)', 'crawlertoll' ); ?></th>
+					<th title="<?php esc_attr_e( 'How many fresh visitors from one IP may use free reads per day, as a multiple of the free-article count (1–20). Blank = default 4×.', 'crawlertoll' ); ?>"><?php esc_html_e( 'IP ceiling ×', 'crawlertoll' ); ?></th>
 					<th style="width:30%;"><?php esc_html_e( 'Access tiers (price micros → access duration)', 'crawlertoll' ); ?></th>
 					<th style="width:26%;"><?php esc_html_e( 'Bundle (whole-path pass)', 'crawlertoll' ); ?></th>
 					<th><?php esc_html_e( 'Email gate', 'crawlertoll' ); ?></th>
@@ -80,6 +81,7 @@ $ct_dur_choices = array(
 					$r_curr  = isset( $rule['currency'] ) ? (string) $rule['currency'] : $site_currency;
 					$r_mcount = ( isset( $rule['meter_count'] ) && '' !== $rule['meter_count'] ) ? (string) (int) $rule['meter_count'] : '';
 					$r_mwin   = ( isset( $rule['meter_window'] ) && '' !== $rule['meter_window'] ) ? (string) (int) $rule['meter_window'] : '';
+					$r_mceil  = ( isset( $rule['meter_ip_ceiling'] ) && '' !== $rule['meter_ip_ceiling'] ) ? (string) (int) $rule['meter_ip_ceiling'] : '';
 					?>
 					<tr>
 						<td><input type="text" name="ct_price_path[]" value="<?php echo esc_attr( $r_path ); ?>" placeholder="/premium/*" style="width:100%;" /></td>
@@ -93,6 +95,7 @@ $ct_dur_choices = array(
 						</td>
 						<td><input type="number" min="0" max="50" step="1" name="ct_meter_count[]" value="<?php echo esc_attr( $r_mcount ); ?>" placeholder="0" /></td>
 						<td><input type="number" min="1" max="365" step="1" name="ct_meter_window[]" value="<?php echo esc_attr( $r_mwin ); ?>" placeholder="30" /></td>
+						<td><input type="number" min="1" max="20" step="1" name="ct_meter_ip_ceiling[]" value="<?php echo esc_attr( $r_mceil ); ?>" placeholder="4" style="width:70px;" /></td>
 						<td>
 							<?php
 							$r_tiers = ( isset( $rule['tiers'] ) && is_array( $rule['tiers'] ) ) ? $rule['tiers'] : array();

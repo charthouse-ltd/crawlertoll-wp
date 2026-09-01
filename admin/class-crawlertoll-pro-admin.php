@@ -381,6 +381,7 @@ class CrawlerToll_Pro_Admin {
 			$currs  = ( isset( $_POST['ct_price_currency'] ) && is_array( $_POST['ct_price_currency'] ) ) ? wp_unslash( $_POST['ct_price_currency'] ) : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- whitelisted below.
 			$meters = ( isset( $_POST['ct_meter_count'] ) && is_array( $_POST['ct_meter_count'] ) ) ? wp_unslash( $_POST['ct_meter_count'] ) : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- cast below.
 			$mwin   = ( isset( $_POST['ct_meter_window'] ) && is_array( $_POST['ct_meter_window'] ) ) ? wp_unslash( $_POST['ct_meter_window'] ) : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- cast below.
+			$mceil  = ( isset( $_POST['ct_meter_ip_ceiling'] ) && is_array( $_POST['ct_meter_ip_ceiling'] ) ) ? wp_unslash( $_POST['ct_meter_ip_ceiling'] ) : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- cast below.
 			$tprice = ( isset( $_POST['ct_tier_price'] ) && is_array( $_POST['ct_tier_price'] ) ) ? wp_unslash( $_POST['ct_tier_price'] ) : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- cast below.
 			$tdur   = ( isset( $_POST['ct_tier_dur'] ) && is_array( $_POST['ct_tier_dur'] ) ) ? wp_unslash( $_POST['ct_tier_dur'] ) : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- whitelisted below.
 			$tcustom = ( isset( $_POST['ct_tier_custom'] ) && is_array( $_POST['ct_tier_custom'] ) ) ? wp_unslash( $_POST['ct_tier_custom'] ) : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- cast below.
@@ -408,6 +409,11 @@ class CrawlerToll_Pro_Admin {
 				if ( $mcount > 0 ) {
 					$rule['meter_count']  = $mcount;
 					$rule['meter_window'] = isset( $mwin[ $i ] ) ? min( 365, max( 1, (int) $mwin[ $i ] ) ) : 30;
+					// M1: per-IP ceiling multiple (1..20; blank = registry default 4×).
+					$mceil = isset( $mceil[ $i ] ) ? (int) $mceil[ $i ] : 0;
+					if ( $mceil >= 1 && $mceil <= 20 ) {
+						$rule['meter_ip_ceiling'] = $mceil;
+					}
 				}
 				// Access tiers (A2): up to 4 price×duration rows. Blank price =
 				// row unused; duration select presets or "custom days". Final

@@ -557,6 +557,11 @@ class CrawlerToll_Plugin {
 			if ( $mcount > 0 ) {
 				$rule['meter_count']  = $mcount;
 				$rule['meter_window'] = isset( $row['meter_window'] ) ? min( 365, max( 1, (int) $row['meter_window'] ) ) : 30;
+				// M1: per-IP ceiling multiple (1..20; absent = registry default 4×).
+				$mceil = isset( $row['meter_ip_ceiling'] ) ? (int) $row['meter_ip_ceiling'] : 0;
+				if ( $mceil >= 1 && $mceil <= 20 ) {
+					$rule['meter_ip_ceiling'] = $mceil;
+				}
 			}
 			// Access tiers (Pro, A2): up to 4 price×duration rows; absent/empty = off.
 			$tiers = CrawlerToll_Tiers::sanitize_rows( isset( $row['tiers'] ) ? $row['tiers'] : null );

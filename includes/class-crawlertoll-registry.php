@@ -176,6 +176,10 @@ class CrawlerToll_Registry {
 				'window_days' => isset( $meter['window_days'] ) ? (int) $meter['window_days'] : 30,
 				'path'        => isset( $meter['path'] ) ? (string) $meter['path'] : '/',
 			);
+			// M1: optional per-IP ceiling multiple (registry clamps to 1..20).
+			if ( isset( $meter['ip_ceiling_mult'] ) && (int) $meter['ip_ceiling_mult'] >= 1 ) {
+				$body['meter']['ip_ceiling_mult'] = (int) $meter['ip_ceiling_mult'];
+			}
 		}
 		// Access tiers (Pro, A2): the registry sanitizes again server-side and
 		// fails closed to legacy single-price on anything malformed (spec §4.2).
@@ -288,13 +292,19 @@ class CrawlerToll_Registry {
 			'currency'     => (string) $currency,
 		);
 		if ( false !== $meter ) {
-			$body['meter'] = is_array( $meter ) && ! empty( $meter['count'] )
-				? array(
+			if ( is_array( $meter ) && ! empty( $meter['count'] ) ) {
+				$body['meter'] = array(
 					'count'       => (int) $meter['count'],
 					'window_days' => isset( $meter['window_days'] ) ? (int) $meter['window_days'] : 30,
 					'path'        => isset( $meter['path'] ) ? (string) $meter['path'] : '/',
-				)
-				: null; // Explicit disable — the registry deletes the meter meta.
+				);
+				// M1: optional per-IP ceiling multiple (registry clamps to 1..20).
+				if ( isset( $meter['ip_ceiling_mult'] ) && (int) $meter['ip_ceiling_mult'] >= 1 ) {
+					$body['meter']['ip_ceiling_mult'] = (int) $meter['ip_ceiling_mult'];
+				}
+			} else {
+				$body['meter'] = null; // Explicit disable — the registry deletes the meter meta.
+			}
 		}
 		if ( false !== $tiers ) {
 			$rows = CrawlerToll_Tiers::sanitize_rows( $tiers );

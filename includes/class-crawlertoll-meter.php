@@ -77,11 +77,19 @@ class CrawlerToll_Meter {
 			if ( $count <= 0 ) {
 				return null; // The winning rule has no meter — do not fall through to shorter rules.
 			}
-			return array(
+			$out = array(
 				'count'       => min( 50, $count ),
 				'window_days' => isset( $rule['meter_window'] ) && (int) $rule['meter_window'] > 0 ? min( 365, (int) $rule['meter_window'] ) : 30,
 				'path'        => $pattern,
 			);
+			// M1 (2026-09-01): per-IP grant ceiling multiple — how many fresh
+			// identities from ONE IP may burn meter slots per day, as a multiple
+			// of count. 1..20; absent = the registry default (env var, then 4×).
+			$mult = isset( $rule['meter_ip_ceiling'] ) ? (int) $rule['meter_ip_ceiling'] : 0;
+			if ( $mult >= 1 && $mult <= 20 ) {
+				$out['ip_ceiling_mult'] = $mult;
+			}
+			return $out;
 		}
 		return null;
 	}

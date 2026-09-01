@@ -97,6 +97,9 @@ export interface PathRule {
   // Absent/0 = paywall from the first article.
   meter_count?: number | string;
   meter_window?: number | string;
+  // M1: per-IP ceiling multiple (1..20) — how many fresh identities from one
+  // IP may burn meter slots per day. Absent = registry default (4×).
+  meter_ip_ceiling?: number | string;
   // Access tiers (Pro, A2): up to 4 price×duration offers. duration_hours
   // null = "no expiry". Absent = legacy single-price.
   tiers?: AccessTier[];

@@ -29,6 +29,7 @@ interface Row {
   amount: string; // e.g. "0.01"
   freeArticles: string; // "" = off, "3" = 3 free reads per window
   windowDays: string; // "" = 30
+  ipCeiling: string; // M1: "" = registry default (4×), "1".."20" = explicit clamp
   tiers: TierRow[]; // access tiers (A2) — empty = legacy single price
   bundle: boolean; // bundle pass (A4) — sell whole-section access
   bundleTiers: TierRow[]; // bundle price rows (only offered when bundle is on)
@@ -159,6 +160,7 @@ function toRow(r: PathRule, currency: string): Row {
     amount: (Number(r.price_micros) / 1_000_000).toString(),
     freeArticles: r.meter_count ? String(Number(r.meter_count)) : "",
     windowDays: r.meter_window ? String(Number(r.meter_window)) : "",
+    ipCeiling: r.meter_ip_ceiling ? String(Number(r.meter_ip_ceiling)) : "",
     tiers: Array.isArray(r.tiers) ? r.tiers.map(tierToRow) : [],
     bundle: r.bundle === true,
     bundleTiers: Array.isArray(r.bundle_tiers) ? r.bundle_tiers.map(tierToRow) : [],
@@ -175,6 +177,11 @@ function toRule(r: Row, fallbackMicros: number, currency: string): PathRule {
     rule.meter_count = Math.min(50, free);
     const win = parseInt(r.windowDays, 10);
     rule.meter_window = Number.isFinite(win) && win > 0 ? Math.min(365, win) : 30;
+    // M1: per-IP ceiling multiple — only serialized in bounds (1..20).
+    const ceil = parseInt(r.ipCeiling, 10);
+    if (Number.isFinite(ceil) && ceil >= 1 && ceil <= 20) {
+      rule.meter_ip_ceiling = ceil;
+    }
   }
   const tiers = r.tiers.map(tierFromRow).filter((t): t is NonNullable<typeof t> => t !== null).slice(0, 4);
   if (tiers.length > 0) {
@@ -222,6 +229,7 @@ function PricingForm({ settings }: { settings: SettingsResponse }) {
         amount: (settings.price_micros / 1_000_000).toString(),
         freeArticles: "",
         windowDays: "",
+        ipCeiling: "",
         tiers: [],
         bundle: false,
         bundleTiers: [],
@@ -253,7 +261,7 @@ function PricingForm({ settings }: { settings: SettingsResponse }) {
             className="rounded-xl border p-3"
             style={{ borderColor: "var(--ct-border)", background: "var(--ct-surface)" }}
           >
-            <div className="grid items-center gap-2 sm:grid-cols-[1fr_150px_130px_110px_36px]">
+            <div className="grid items-center gap-2 sm:grid-cols-[1fr_150px_100px_100px_90px_36px]">
               <div>
                 <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide" style={{ color: "var(--ct-muted)" }}>
                   Section (path)
@@ -311,6 +319,25 @@ function PricingForm({ settings }: { settings: SettingsResponse }) {
                   placeholder="30"
                   value={r.windowDays}
                   onChange={(e) => update(i, { windowDays: e.target.value })}
+                />
+              </div>
+              <div>
+                <label
+                  className="mb-1 block text-[11px] font-semibold uppercase tracking-wide"
+                  style={{ color: "var(--ct-muted)" }}
+                  title="How many fresh visitors from one internet address may use free reads per day, as a multiple of the free-article count (1–20). Blank = default 4×. Lower it if readers abuse private windows to reset their allowance."
+                >
+                  Max per IP ×
+                </label>
+                <input
+                  style={inputStyle}
+                  type="number"
+                  min={1}
+                  max={20}
+                  step={1}
+                  placeholder="4"
+                  value={r.ipCeiling}
+                  onChange={(e) => update(i, { ipCeiling: e.target.value })}
                 />
               </div>
               <button
