@@ -524,6 +524,8 @@ class CrawlerToll_Premium_Gate {
 		$html .= ' data-wall-value="' . esc_attr( $wall['value_line'] ) . '"';
 		$html .= ' data-wall-meter-out="' . esc_attr( $wall['meter_out'] ) . '"';
 		$html .= ' data-wall-unavailable="' . esc_attr( $wall['unavailable'] ) . '"';
+		$html .= ' data-email-mode="' . esc_attr( self::email_gate_mode( $settings ) ) . '"';
+		$html .= ' data-rest-url="' . esc_attr( rest_url( 'crawlertoll/v1/' ) ) . '"';
 		$html .= ' data-rail="' . esc_attr( $settings['rail'] ) . '">';
 		$html .= '<p>' . esc_html( $wall['unavailable'] ) . '</p>';
 		$html .= '</div>';
@@ -539,6 +541,21 @@ class CrawlerToll_Premium_Gate {
 	}
 
 	// ─── seal-on-serve (fail-closed) ──────────────────────────────────
+
+	/**
+	 * Email-gated access (Pro, A5, spec §5.5): the site-level consent mode for
+	 * the email wall form — "split" (marketing checkbox optional, the default)
+	 * or "pur" (consent-or-pay: marketing consent required for the free unlock;
+	 * the Readers tab shows a regulatory warning when this is chosen). Anything
+	 * unreadable fails safe to "split".
+	 *
+	 * @param array $settings Plugin settings.
+	 * @return string "split"|"pur"
+	 */
+	private static function email_gate_mode( $settings ) {
+		$mode = isset( $settings['email_gate_mode'] ) ? (string) $settings['email_gate_mode'] : 'split';
+		return in_array( $mode, array( 'split', 'pur' ), true ) ? $mode : 'split';
+	}
 
 	/**
 	 * The locked-region markup appended to the singular preview: the marker div
@@ -563,6 +580,8 @@ class CrawlerToll_Premium_Gate {
 		$html .= ' data-wall-value="' . esc_attr( $wall['value_line'] ) . '"';
 		$html .= ' data-wall-meter-out="' . esc_attr( $wall['meter_out'] ) . '"';
 		$html .= ' data-wall-unavailable="' . esc_attr( $wall['unavailable'] ) . '"';
+		$html .= ' data-email-mode="' . esc_attr( self::email_gate_mode( $settings ) ) . '"';
+		$html .= ' data-rest-url="' . esc_attr( rest_url( 'crawlertoll/v1/' ) ) . '"';
 		$html .= ' data-rail="' . esc_attr( $settings['rail'] ) . '">';
 		$html .= '<p>' . esc_html( $wall['unavailable'] ) . '</p>';
 		$html .= '</div>';
@@ -608,6 +627,9 @@ class CrawlerToll_Premium_Gate {
 		// the permalink path this content seals under (scoped-pass matching).
 		$bundle   = CrawlerToll_Tiers::resolve_bundle_for_post( $post_id, $settings );
 		$url_path = CrawlerToll_Tiers::url_path_for_post( $post_id );
+		// Email-gated access (Pro, A5, spec §5.5): the winning rule's "read free
+		// with your email" flag. False for free tier / unflagged paths.
+		$email_gate = CrawlerToll_Tiers::resolve_email_gate_for_post( $post_id, $settings );
 
 		$cached = get_post_meta( $post_id, self::SEAL_META, true );
 		if ( is_array( $cached ) && isset( $cached['hash'], $cached['blob'] ) && $cached['hash'] === $hash ) {
@@ -625,7 +647,9 @@ class CrawlerToll_Premium_Gate {
 			$bundle_differ    = wp_json_encode( $cached_bundle ) !== wp_json_encode( $bundle );
 			$cached_url_path  = isset( $cached['url_path'] ) ? $cached['url_path'] : null;
 			$url_path_differs = $cached_url_path !== $url_path;
-			if ( $cached_price !== $price || $cached_curr !== $currency || $meters_differ || $tiers_differ || $bundle_differ || $url_path_differs ) {
+			$cached_egate  = ! empty( $cached['email_gate'] );
+			$egate_differs = $cached_egate !== $email_gate;
+			if ( $cached_price !== $price || $cached_curr !== $currency || $meters_differ || $tiers_differ || $bundle_differ || $url_path_differs || $egate_differs ) {
 				$host = wp_parse_url( home_url(), PHP_URL_HOST );
 				$cid  = CrawlerToll_Sealed_Gate::build_content_id( $host, $post_id );
 				$res  = ( new CrawlerToll_Registry() )->update_sealed_price(
@@ -635,7 +659,8 @@ class CrawlerToll_Premium_Gate {
 					$meters_differ ? $meter : false,
 					$tiers_differ ? $tiers : false,
 					$bundle_differ ? ( null === $bundle ? null : $bundle ) : false,
-					$url_path_differs ? ( null === $url_path ? null : $url_path ) : false
+					$url_path_differs ? ( null === $url_path ? null : $url_path ) : false,
+					$egate_differs ? ( $email_gate ? true : null ) : false
 				);
 				if ( ! is_wp_error( $res ) ) {
 					$cached['price_micros'] = $price;
@@ -651,6 +676,9 @@ class CrawlerToll_Premium_Gate {
 					}
 					if ( $url_path_differs ) {
 						$cached['url_path'] = $url_path;
+					}
+					if ( $egate_differs ) {
+						$cached['email_gate'] = $email_gate;
 					}
 					update_post_meta( $post_id, self::SEAL_META, $cached );
 				}
@@ -668,7 +696,7 @@ class CrawlerToll_Premium_Gate {
 		}
 
 		$registry = new CrawlerToll_Registry();
-		$res      = $registry->register_sealed( $cid, $cek_b64, $price, $currency, 'premium', $meter, $tiers, $bundle, $url_path );
+		$res      = $registry->register_sealed( $cid, $cek_b64, $price, $currency, 'premium', $meter, $tiers, $bundle, $url_path, $email_gate );
 		if ( is_wp_error( $res ) || empty( $res['status'] ) || 'registered' !== $res['status'] ) {
 			// Never serve a blob whose CEK the escrow didn't store — fail closed.
 			return $this->blob[ $post_id ] = false;
@@ -687,6 +715,7 @@ class CrawlerToll_Premium_Gate {
 				'tiers'         => $tiers,
 				'bundle'        => $bundle,
 				'url_path'      => $url_path,
+				'email_gate'    => $email_gate,
 				'registered_at' => current_time( 'mysql' ),
 			)
 		);

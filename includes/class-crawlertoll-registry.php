@@ -127,8 +127,8 @@ class CrawlerToll_Registry {
 	 * @param string $scope
 	 * @return array|WP_Error Decoded JSON, or WP_Error on transport failure.
 	 */
-	public function register_sealed( $content_id, $cek_b64, $price_micros, $currency = 'USDC', $scope = 'full', $meter = null, $tiers = null, $bundle = null, $url_path = null ) {
-		$response = $this->post_sealed_register( $content_id, $cek_b64, $price_micros, $currency, $scope, $meter, $tiers, $bundle, $url_path );
+	public function register_sealed( $content_id, $cek_b64, $price_micros, $currency = 'USDC', $scope = 'full', $meter = null, $tiers = null, $bundle = null, $url_path = null, $email_gate = null ) {
+		$response = $this->post_sealed_register( $content_id, $cek_b64, $price_micros, $currency, $scope, $meter, $tiers, $bundle, $url_path, $email_gate );
 		if ( is_wp_error( $response ) ) {
 			return $response;
 		}
@@ -144,7 +144,7 @@ class CrawlerToll_Registry {
 			&& in_array( $data['error'], array( 'publisher_not_enrolled', 'invalid_token', 'missing_bearer_token' ), true ) ) {
 			$enroll = $this->register_with_registry();
 			if ( ! is_wp_error( $enroll ) && is_array( $enroll ) && isset( $enroll['status'] ) && 'registered' === $enroll['status'] ) {
-				$response = $this->post_sealed_register( $content_id, $cek_b64, $price_micros, $currency, $scope, $meter, $tiers, $bundle, $url_path );
+				$response = $this->post_sealed_register( $content_id, $cek_b64, $price_micros, $currency, $scope, $meter, $tiers, $bundle, $url_path, $email_gate );
 				if ( is_wp_error( $response ) ) {
 					return $response;
 				}
@@ -159,7 +159,7 @@ class CrawlerToll_Registry {
 	 *
 	 * @return array|WP_Error Raw HTTP response, or WP_Error on transport failure.
 	 */
-	private function post_sealed_register( $content_id, $cek_b64, $price_micros, $currency, $scope, $meter = null, $tiers = null, $bundle = null, $url_path = null ) {
+	private function post_sealed_register( $content_id, $cek_b64, $price_micros, $currency, $scope, $meter = null, $tiers = null, $bundle = null, $url_path = null, $email_gate = null ) {
 		$settings = wp_parse_args( (array) get_option( CRAWLERTOLL_OPTION_KEY ), crawlertoll_default_settings() );
 		$body     = array(
 			'content_id'   => $content_id,
@@ -195,6 +195,11 @@ class CrawlerToll_Registry {
 		// match against it at renewal.
 		if ( is_string( $url_path ) && '' !== $url_path && '/' === substr( $url_path, 0, 1 ) ) {
 			$body['url_path'] = $url_path;
+		}
+		// Email-gated access (Pro, A5, spec §5.5): only ever set explicitly true —
+		// absent = off. The registry sanitizes again server-side (exactly true).
+		if ( true === $email_gate ) {
+			$body['email_gate'] = true;
 		}
 		// R1.x-a: the publisher's USDC payout address. Without it the registry
 		// advertises x402 with no payee and (in production) fails closed — paid
@@ -271,9 +276,11 @@ class CrawlerToll_Registry {
 	 *                                 disables it, false (default) leaves untouched.
 	 * @param string|null|false $url_path Permalink path (A4): string sets it, null
 	 *                                 deletes it, false (default) leaves untouched.
+	 * @param bool|null|false   $email_gate Email-gated access flag (A5): true sets
+	 *                                 it, null deletes it, false (default) leaves untouched.
 	 * @return array|WP_Error
 	 */
-	public function update_sealed_price( $content_id, $price_micros, $currency, $meter = false, $tiers = false, $bundle = false, $url_path = false ) {
+	public function update_sealed_price( $content_id, $price_micros, $currency, $meter = false, $tiers = false, $bundle = false, $url_path = false, $email_gate = false ) {
 		$settings = wp_parse_args( (array) get_option( CRAWLERTOLL_OPTION_KEY ), crawlertoll_default_settings() );
 		$body     = array(
 			'publisher'    => wp_parse_url( home_url(), PHP_URL_HOST ),
@@ -304,6 +311,10 @@ class CrawlerToll_Registry {
 		}
 		if ( false !== $url_path ) {
 			$body['url_path'] = ( is_string( $url_path ) && '' !== $url_path ) ? $url_path : null;
+		}
+		// Email gate (A5): same tri-state discipline as url_path.
+		if ( false !== $email_gate ) {
+			$body['email_gate'] = ( true === $email_gate ) ? true : null;
 		}
 		if ( ! empty( $settings['x402_pay_to'] ) && preg_match( '/^0x[0-9a-fA-F]{40}$/', (string) $settings['x402_pay_to'] ) ) {
 			$body['x402_pay_to'] = (string) $settings['x402_pay_to'];
@@ -426,6 +437,86 @@ class CrawlerToll_Registry {
 			return new WP_Error( 'crawlertoll_webhook_deliveries', $err, array( 'status' => wp_remote_retrieve_response_code( $response ) ) );
 		}
 		return is_array( $data['deliveries'] ) ? $data['deliveries'] : array();
+	}
+
+	/**
+	 * Email-gated access (Pro, A5, spec §5.5): ask the registry to email a
+	 * one-time magic link to a reader. The WP site is the data controller (it
+	 * stores the raw address + consent); the registry only ever sees the hash
+	 * at rest and the address in transit for the send. Publisher-authed.
+	 *
+	 * Fail-honest: a registry rejection (rate limit, gate off, send failure)
+	 * comes back as WP_Error carrying the registry's error code so the REST
+	 * handler can relay truthful copy to the reader.
+	 *
+	 * @param string $email             Reader address (validated by the caller).
+	 * @param string $content_id        Sealed content id (host/post/N).
+	 * @param bool   $consent_marketing Reader's marketing-consent choice.
+	 * @param string $article_url       Permalink the magic link lands back on.
+	 * @return array{status:string,expires_in:int}|WP_Error
+	 */
+	public function email_request( $email, $content_id, $consent_marketing, $article_url ) {
+		$body = array(
+			'publisher'         => wp_parse_url( home_url(), PHP_URL_HOST ),
+			'email'             => (string) $email,
+			'content_id'        => (string) $content_id,
+			'article_url'       => (string) $article_url,
+			'consent_marketing' => (bool) $consent_marketing,
+		);
+		$response = wp_remote_post(
+			self::base_url() . '/v1/email/request',
+			array(
+				'body'    => wp_json_encode( $body ),
+				'headers' => array(
+					'Content-Type'  => 'application/json',
+					'Authorization' => 'Bearer ' . $this->get_registry_key(),
+				),
+				'timeout' => 20, // the registry sends mail synchronously — allow for a slow SMTP hop
+			)
+		);
+		if ( is_wp_error( $response ) ) {
+			return $response;
+		}
+		$data = json_decode( wp_remote_retrieve_body( $response ), true );
+		if ( ! is_array( $data ) || empty( $data['status'] ) || 'sent' !== $data['status'] ) {
+			$err = is_array( $data ) && isset( $data['error'] ) ? (string) $data['error'] : 'unexpected_response';
+			return new WP_Error( 'crawlertoll_email_request', $err, array( 'status' => wp_remote_retrieve_response_code( $response ) ) );
+		}
+		return $data;
+	}
+
+	/**
+	 * Email-gated access (A5): did this grant token get redeemed? The wall POSTs
+	 * the token back to WP after a successful redeem; WP asks the registry and
+	 * marks its subscriber row verified (24 h registry window). Publisher-authed.
+	 *
+	 * @param string $token The ct_email_grant token (32 lowercase hex chars).
+	 * @return array{verified:bool,email_sha256?:string,content_id?:string,verified_at?:string}|WP_Error
+	 */
+	public function email_verify_status( $token ) {
+		$response = wp_remote_post(
+			self::base_url() . '/v1/email/verify-status',
+			array(
+				'body'    => wp_json_encode( array(
+					'publisher' => wp_parse_url( home_url(), PHP_URL_HOST ),
+					'token'     => (string) $token,
+				) ),
+				'headers' => array(
+					'Content-Type'  => 'application/json',
+					'Authorization' => 'Bearer ' . $this->get_registry_key(),
+				),
+				'timeout' => 15,
+			)
+		);
+		if ( is_wp_error( $response ) ) {
+			return $response;
+		}
+		$data = json_decode( wp_remote_retrieve_body( $response ), true );
+		if ( ! is_array( $data ) || ! array_key_exists( 'verified', $data ) ) {
+			$err = is_array( $data ) && isset( $data['error'] ) ? (string) $data['error'] : 'unexpected_response';
+			return new WP_Error( 'crawlertoll_email_verify', $err, array( 'status' => wp_remote_retrieve_response_code( $response ) ) );
+		}
+		return $data;
 	}
 
 	/**

@@ -98,7 +98,7 @@ require_once CRAWLERTOLL_PLUGIN_DIR . 'includes/class-crawlertoll-sealed-gate.ph
 require_once CRAWLERTOLL_PLUGIN_DIR . 'includes/class-crawlertoll-premium-gate.php';
 // Pro classes. These files are STRIPPED from the free wp.org build (see build.sh),
 // so each require is file_exists-guarded — the free plugin degrades to Pro-off
-// instead of fataling on a missing file. The premium build ships all six.
+// instead of fataling on a missing file. The premium build ships all seven.
 foreach ( array(
 	'includes/class-crawlertoll-db.php',
 	'includes/class-crawlertoll-logger.php',
@@ -106,6 +106,7 @@ foreach ( array(
 	'includes/class-crawlertoll-pricing.php',
 	'includes/class-crawlertoll-alerts.php',
 	'includes/class-crawlertoll-catalogue-updater.php',
+	'includes/class-crawlertoll-subscribers.php',
 ) as $crawlertoll_pro_file ) {
 	$crawlertoll_pro_path = CRAWLERTOLL_PLUGIN_DIR . $crawlertoll_pro_file;
 	if ( file_exists( $crawlertoll_pro_path ) ) {

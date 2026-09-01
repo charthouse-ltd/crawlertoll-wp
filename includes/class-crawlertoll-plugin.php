@@ -337,6 +337,28 @@ class CrawlerToll_Plugin {
 				'callback'            => array( $this, 'rest_webhook_payment' ),
 			)
 		);
+
+		// Email-gated access (Pro, A5, spec §5.5): PUBLIC reader-facing endpoints —
+		// same openness as /context-license (the caller is an anonymous reader,
+		// not an admin). The feature itself is Pro-gated inside the handlers.
+		register_rest_route(
+			'crawlertoll/v1',
+			'/email/request',
+			array(
+				'methods'             => 'POST',
+				'permission_callback' => '__return_true',
+				'callback'            => array( $this, 'rest_email_request' ),
+			)
+		);
+		register_rest_route(
+			'crawlertoll/v1',
+			'/email-verified',
+			array(
+				'methods'             => 'POST',
+				'permission_callback' => '__return_true',
+				'callback'            => array( $this, 'rest_email_verified' ),
+			)
+		);
 	}
 
 	/**
@@ -550,12 +572,133 @@ class CrawlerToll_Plugin {
 					$rule['bundle_tiers'] = $btiers;
 				}
 			}
+			// Email gate (Pro, A5, spec §5.5): "read free with your email" tile.
+			if ( ! empty( $row['email_gate'] ) ) {
+				$rule['email_gate'] = true;
+			}
 			$rules[] = $rule;
 		}
 
 		$settings['path_pricing'] = $rules;
 		update_option( CRAWLERTOLL_OPTION_KEY, $settings );
 		return array( 'path_pricing' => $rules );
+	}
+
+	/**
+	 * POST /crawlertoll/v1/email/request — email-gated access (Pro, A5, spec
+	 * §5.5). A reader on an email-gated article asks for a magic link. The WP
+	 * site is the data controller: it stores the raw address + the exact consent
+	 * text here, then forwards server-side to the registry, which emails the
+	 * one-time link. Public (anonymous readers) but feature-gated: Pro active +
+	 * the article's rule flagged email_gate, else an honest 403.
+	 *
+	 * Error contract (the wall maps these to plain copy):
+	 *   403 pro_required / email_gate_disabled · 400 invalid_email /
+	 *   consent_required · 404 unknown_content · 429 rate_limited ·
+	 *   502 email_send_failed (registry could not send — nothing was granted).
+	 *
+	 * @param WP_REST_Request $request
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public function rest_email_request( $request ) {
+		if ( ! class_exists( 'CrawlerToll_Pro_Admin' ) || ! CrawlerToll_Pro_Admin::is_pro_active()
+			|| ! class_exists( 'CrawlerToll_Subscribers' ) ) {
+			return new WP_Error( 'pro_required', 'Email access is not available on this site.', array( 'status' => 403 ) );
+		}
+
+		$email = sanitize_email( (string) $request->get_param( 'email' ) );
+		if ( ! $email || ! is_email( $email ) ) {
+			return new WP_Error( 'invalid_email', 'That does not look like an email address.', array( 'status' => 400 ) );
+		}
+		$content_id = (string) $request->get_param( 'content_id' );
+		if ( '' === $content_id ) {
+			return new WP_Error( 'unknown_content', 'This content is not set up for email access.', array( 'status' => 404 ) );
+		}
+		$consent_functional = (bool) $request->get_param( 'consent_functional' );
+		if ( ! $consent_functional ) {
+			return new WP_Error( 'consent_required', 'We need your OK to email you the access link.', array( 'status' => 400 ) );
+		}
+
+		// Consent mode (Readers tab): "split" = marketing optional; "pur" =
+		// consent-or-pay — the free email unlock requires the marketing consent.
+		$settings = crawlertoll_get_settings();
+		$mode     = isset( $settings['email_gate_mode'] ) ? (string) $settings['email_gate_mode'] : 'split';
+		$consent_marketing = (bool) $request->get_param( 'consent_marketing' );
+		if ( 'pur' === $mode && ! $consent_marketing ) {
+			return new WP_Error( 'consent_required', 'The free email unlock needs the newsletter consent — or choose a paid option.', array( 'status' => 400 ) );
+		}
+
+		// The article must exist and its winning rule must carry the flag —
+		// otherwise a reader could mint subscriber rows (and registry mail) for
+		// arbitrary content ids.
+		$post_id = self::post_id_from_content_id( $content_id );
+		if ( $post_id <= 0 || ! CrawlerToll_Tiers::resolve_email_gate_for_post( $post_id, $settings ) ) {
+			return new WP_Error( 'email_gate_disabled', 'Email access is not offered for this content.', array( 'status' => 403 ) );
+		}
+
+		$permalink = get_permalink( $post_id );
+		if ( ! $permalink ) {
+			return new WP_Error( 'unknown_content', 'This content is not set up for email access.', array( 'status' => 404 ) );
+		}
+
+		// Data-controller record first: the exact marketing label the reader saw
+		// (the wall sends it verbatim) + timestamps — the consent audit trail.
+		$consent_text = mb_substr( sanitize_text_field( (string) $request->get_param( 'consent_text' ) ), 0, 300 );
+		CrawlerToll_Subscribers::upsert_request( $email, $consent_marketing, $consent_text, $content_id );
+
+		$result = ( new CrawlerToll_Registry() )->email_request( $email, $content_id, $consent_marketing, $permalink );
+		if ( is_wp_error( $result ) ) {
+			$code    = $result->get_error_message();
+			$status  = (int) $result->get_error_data( 'status' );
+			$status  = $status >= 400 && $status < 600 ? $status : 502;
+			$message = 'rate_limited' === $code
+				? 'Too many requests — please try again later.'
+				: 'We could not send the email — please try again in a moment.';
+			return new WP_Error( $code, $message, array( 'status' => $status ) );
+		}
+		return rest_ensure_response( array(
+			'status'     => 'sent',
+			'expires_in' => isset( $result['expires_in'] ) ? (int) $result['expires_in'] : 900,
+		) );
+	}
+
+	/**
+	 * POST /crawlertoll/v1/email-verified — the wall reports a successful
+	 * magic-link redeem; WP asks the registry (publisher-authed) and marks its
+	 * subscriber row verified. FAIL-OPEN: the reader already holds the CEK, so
+	 * any failure here returns 200 with verified:false — bookkeeping must never
+	 * break an unlock that already happened.
+	 *
+	 * @param WP_REST_Request $request
+	 * @return WP_REST_Response
+	 */
+	public function rest_email_verified( $request ) {
+		$token = (string) $request->get_param( 'token' );
+		if ( ! preg_match( '/^[0-9a-f]{32}$/', $token ) ) {
+			return rest_ensure_response( array( 'verified' => false ) );
+		}
+		if ( ! class_exists( 'CrawlerToll_Subscribers' ) || ! CrawlerToll_Pro_Admin::is_pro_active() ) {
+			return rest_ensure_response( array( 'verified' => false ) );
+		}
+		$status = ( new CrawlerToll_Registry() )->email_verify_status( $token );
+		if ( is_wp_error( $status ) || empty( $status['verified'] ) || empty( $status['email_sha256'] ) ) {
+			return rest_ensure_response( array( 'verified' => false ) );
+		}
+		CrawlerToll_Subscribers::mark_verified( (string) $status['email_sha256'], isset( $status['verified_at'] ) ? (string) $status['verified_at'] : '' );
+		return rest_ensure_response( array( 'verified' => true ) );
+	}
+
+	/**
+	 * Extract the post id from a content_id of the form "host/post/N".
+	 *
+	 * @param string $content_id
+	 * @return int 0 when the shape is wrong.
+	 */
+	private static function post_id_from_content_id( $content_id ) {
+		if ( preg_match( '#^[^/]+/post/(\d+)$#', (string) $content_id, $m ) ) {
+			return (int) $m[1];
+		}
+		return 0;
 	}
 
 	/**

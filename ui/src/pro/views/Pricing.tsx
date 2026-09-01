@@ -32,6 +32,7 @@ interface Row {
   tiers: TierRow[]; // access tiers (A2) — empty = legacy single price
   bundle: boolean; // bundle pass (A4) — sell whole-section access
   bundleTiers: TierRow[]; // bundle price rows (only offered when bundle is on)
+  emailGate: boolean; // email gate (A5) — humans read free after email verification
 }
 
 const DUR_CHOICES: Array<[string, string]> = [
@@ -161,6 +162,7 @@ function toRow(r: PathRule, currency: string): Row {
     tiers: Array.isArray(r.tiers) ? r.tiers.map(tierToRow) : [],
     bundle: r.bundle === true,
     bundleTiers: Array.isArray(r.bundle_tiers) ? r.bundle_tiers.map(tierToRow) : [],
+    emailGate: r.email_gate === true,
   };
 }
 
@@ -186,6 +188,10 @@ function toRule(r: Row, fallbackMicros: number, currency: string): PathRule {
       rule.bundle = true;
       rule.bundle_tiers = btiers;
     }
+  }
+  // Email gate (A5): a plain flag — no extra config needed on the rule.
+  if (r.emailGate) {
+    rule.email_gate = true;
   }
   return rule;
 }
@@ -219,6 +225,7 @@ function PricingForm({ settings }: { settings: SettingsResponse }) {
         tiers: [],
         bundle: false,
         bundleTiers: [],
+        emailGate: false,
       },
     ]);
 
@@ -366,6 +373,22 @@ function PricingForm({ settings }: { settings: SettingsResponse }) {
                   />
                 </>
               )}
+            </div>
+            {/* Email gate (A5): humans unlock free after verifying an email. */}
+            <div className="mt-3 rounded-lg p-3" style={{ background: "var(--ct-elevated)" }}>
+              <label className="flex items-center gap-2 text-[12px] font-semibold" style={{ cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={r.emailGate}
+                  onChange={(e) => update(i, { emailGate: e.target.checked })}
+                />
+                Email gate <span style={{ color: "var(--ct-muted)", fontWeight: 400 }}>(optional)</span>
+              </label>
+              <p className="mt-1 text-[12px]" style={{ color: "var(--ct-muted)" }}>
+                Human readers can unlock articles in this section free by verifying their email address — you get a
+                reachable subscriber instead of a micropayment (consent mode + subscriber list live under the Readers
+                tab). AI crawlers always pay; the email gate never applies to them.
+              </p>
             </div>
           </div>
         ))}

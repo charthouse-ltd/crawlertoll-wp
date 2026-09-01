@@ -388,6 +388,7 @@ class CrawlerToll_Pro_Admin {
 			$bprice  = ( isset( $_POST['ct_bundle_price'] ) && is_array( $_POST['ct_bundle_price'] ) ) ? wp_unslash( $_POST['ct_bundle_price'] ) : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- cast below.
 			$bdur    = ( isset( $_POST['ct_bundle_dur'] ) && is_array( $_POST['ct_bundle_dur'] ) ) ? wp_unslash( $_POST['ct_bundle_dur'] ) : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- whitelisted below.
 			$bcustom = ( isset( $_POST['ct_bundle_custom'] ) && is_array( $_POST['ct_bundle_custom'] ) ) ? wp_unslash( $_POST['ct_bundle_custom'] ) : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- cast below.
+			$egate   = ( isset( $_POST['ct_email_gate'] ) && is_array( $_POST['ct_email_gate'] ) ) ? wp_unslash( $_POST['ct_email_gate'] ) : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- presence check only.
 
 			$rules = array();
 			foreach ( $paths as $i => $p ) {
@@ -460,6 +461,11 @@ class CrawlerToll_Pro_Admin {
 						$rule['bundle_tiers'] = $btiers;
 					}
 				}
+				// Email gate (A5, spec §5.5): "read free with your email" tile on
+				// the wall for humans; AI crawlers always pay. Checkbox absent = off.
+				if ( ! empty( $egate[ $i ] ) ) {
+					$rule['email_gate'] = true;
+				}
 				$rules[] = $rule;
 			}
 
@@ -480,6 +486,80 @@ class CrawlerToll_Pro_Admin {
 		echo '<div id="crawlertoll-pro-app" data-view="pricing">';
 		include CRAWLERTOLL_PLUGIN_DIR . 'admin/views/pro-pricing.php';
 		echo '</div>';
+	}
+
+	/**
+	 * Render the Readers tab (Pro, A5, spec §5.5): the email-gate consent mode
+	 * and the subscriber list the email gate collects. Classic PHP rendering on
+	 * purpose — NOT the #crawlertoll-pro-app wrapper (the React app would
+	 * replace unknown data-views with the Dashboard and swallow this markup).
+	 *
+	 * @return void
+	 */
+	public function render_readers_tab() {
+		// CSV export (consent audit trail): marketing-consented rows only.
+		if ( isset( $_GET['ct_readers_export'] )
+			&& isset( $_GET['ct_readers_nonce'] )
+			&& wp_verify_nonce( sanitize_text_field( wp_unslash( $_GET['ct_readers_nonce'] ) ), 'crawlertoll_readers_export' )
+			&& current_user_can( 'manage_options' )
+		) {
+			$this->send_readers_csv();
+		}
+
+		// Save the consent mode.
+		if ( isset( $_POST['crawlertoll_readers_nonce'] )
+			&& wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['crawlertoll_readers_nonce'] ) ), 'crawlertoll_save_readers' )
+			&& current_user_can( 'manage_options' )
+		) {
+			$settings = crawlertoll_get_settings();
+			$mode     = isset( $_POST['ct_email_gate_mode'] ) ? (string) sanitize_text_field( wp_unslash( $_POST['ct_email_gate_mode'] ) ) : 'split';
+			$settings['email_gate_mode'] = in_array( $mode, array( 'split', 'pur' ), true ) ? $mode : 'split';
+			update_option( CRAWLERTOLL_OPTION_KEY, $settings );
+			echo '<div class="notice notice-success is-dismissible"><p>';
+			esc_html_e( 'Email access settings saved.', 'crawlertoll' );
+			echo '</p></div>';
+		}
+
+		$settings    = crawlertoll_get_settings();
+		$mode        = isset( $settings['email_gate_mode'] ) && 'pur' === $settings['email_gate_mode'] ? 'pur' : 'split';
+		$subscribers = class_exists( 'CrawlerToll_Subscribers' ) ? CrawlerToll_Subscribers::all( 500 ) : array();
+		$export_url  = wp_nonce_url(
+			add_query_arg(
+				array( 'ct_tab' => 'readers', 'ct_readers_export' => '1' ),
+				admin_url( 'options-general.php?page=crawlertoll' )
+			),
+			'crawlertoll_readers_export',
+			'ct_readers_nonce'
+		);
+		include CRAWLERTOLL_PLUGIN_DIR . 'admin/views/pro-readers.php';
+	}
+
+	/**
+	 * Stream the marketing-consent CSV (email, exact consent text, consent
+	 * timestamp, verification). Only consent_marketing=1 rows — exporting
+	 * non-consented addresses for marketing would defeat the entire design.
+	 *
+	 * @return void
+	 */
+	private function send_readers_csv() {
+		$rows = class_exists( 'CrawlerToll_Subscribers' ) ? CrawlerToll_Subscribers::export_marketing() : array();
+		nocache_headers();
+		header( 'Content-Type: text/csv; charset=utf-8' );
+		header( 'Content-Disposition: attachment; filename=crawlertoll-marketing-subscribers-' . gmdate( 'Y-m-d' ) . '.csv' );
+		$out = fopen( 'php://output', 'w' ); // phpcs:ignore WordPress.WP.AlternativeFunctions
+		fputcsv( $out, array( 'email', 'consent_text', 'consent_at', 'verified', 'verified_at', 'created_at' ) ); // phpcs:ignore WordPress.WP.AlternativeFunctions
+		foreach ( $rows as $row ) {
+			fputcsv( $out, array( // phpcs:ignore WordPress.WP.AlternativeFunctions
+				isset( $row['email'] ) ? $row['email'] : '',
+				isset( $row['consent_text'] ) ? $row['consent_text'] : '',
+				isset( $row['consent_at'] ) ? $row['consent_at'] : '',
+				! empty( $row['verified'] ) ? 'yes' : 'no',
+				isset( $row['verified_at'] ) ? $row['verified_at'] : '',
+				isset( $row['created_at'] ) ? $row['created_at'] : '',
+			) );
+		}
+		fclose( $out ); // phpcs:ignore WordPress.WP.AlternativeFunctions
+		exit;
 	}
 
 	/**

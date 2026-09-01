@@ -16,7 +16,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 // Render saved rules followed by 3 blank rows for new entries — no JS needed,
 // blank paths are skipped on save (clear a path + save to delete its rule).
-$blank   = array( 'path' => '', 'price_micros' => '', 'currency' => $site_currency, 'meter_count' => '', 'meter_window' => '', 'tiers' => array(), 'bundle' => false, 'bundle_tiers' => array() );
+$blank   = array( 'path' => '', 'price_micros' => '', 'currency' => $site_currency, 'meter_count' => '', 'meter_window' => '', 'tiers' => array(), 'bundle' => false, 'bundle_tiers' => array(), 'email_gate' => false );
 $display = array_merge( $rules, array( $blank, $blank, $blank ) );
 
 // Access tiers (A2): duration select choices. Stored as duration_hours
@@ -43,6 +43,9 @@ $ct_dur_choices = array(
 	<p class="description" style="max-width:640px;">
 		<?php esc_html_e( 'Bundle: sell one pass that covers EVERYTHING under this path (e.g. all of /reviews/* or, with /, the whole site). The reader pays once and roams every covered article for the chosen duration — your single-article prices stay on the wall beside it. Tick "Sell a bundle" and add its price rows (priced like tiers, usually higher than a single article). Articles a reader already bought separately are not refunded or credited.', 'crawlertoll' ); ?>
 	</p>
+	<p class="description" style="max-width:640px;">
+		<?php esc_html_e( 'Email gate: let HUMAN readers unlock articles on this path free by verifying their email address — you get a reachable subscriber instead of a micropayment (see the Readers tab for the consent mode and the subscriber list). AI crawlers always pay; the email gate never applies to them.', 'crawlertoll' ); ?>
+	</p>
 	<p class="description">
 		<?php
 		printf(
@@ -66,6 +69,7 @@ $ct_dur_choices = array(
 					<th><?php esc_html_e( 'Window (days)', 'crawlertoll' ); ?></th>
 					<th style="width:30%;"><?php esc_html_e( 'Access tiers (price micros → access duration)', 'crawlertoll' ); ?></th>
 					<th style="width:26%;"><?php esc_html_e( 'Bundle (whole-path pass)', 'crawlertoll' ); ?></th>
+					<th><?php esc_html_e( 'Email gate', 'crawlertoll' ); ?></th>
 				</tr>
 			</thead>
 			<tbody>
@@ -150,6 +154,12 @@ $ct_dur_choices = array(
 									<input type="number" min="1" max="365" step="1" name="ct_bundle_custom[<?php echo esc_attr( (string) $i ); ?>][]" value="<?php echo esc_attr( $b_cus ); ?>" placeholder="days" style="width:60px;" title="<?php esc_attr_e( 'Custom duration in days (only used with “Custom days”)', 'crawlertoll' ); ?>" />
 								</div>
 							<?php endfor; ?>
+						</td>
+						<td>
+							<label style="display:block;">
+								<input type="checkbox" name="ct_email_gate[<?php echo esc_attr( (string) $i ); ?>]" value="1" <?php checked( ! empty( $rule['email_gate'] ) ); ?> />
+								<?php esc_html_e( 'Read free with email', 'crawlertoll' ); ?>
+							</label>
 						</td>
 					</tr>
 				<?php endforeach; ?>

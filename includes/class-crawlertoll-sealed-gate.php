@@ -106,6 +106,9 @@ class CrawlerToll_Sealed_Gate {
 		// the permalink path this content seals under (scoped-pass matching).
 		$bundle   = CrawlerToll_Tiers::resolve_bundle_for_post( $post_id, $settings );
 		$url_path = CrawlerToll_Tiers::url_path_for_post( $post_id );
+		// Email-gated access (Pro, A5, spec §5.5): the winning rule's "read free
+		// with your email" flag. False for free tier / unflagged paths.
+		$email_gate = CrawlerToll_Tiers::resolve_email_gate_for_post( $post_id, $settings );
 		$cached = get_post_meta( $post_id, self::META_KEY, true );
 		if ( is_array( $cached ) && isset( $cached['hash'], $cached['blob'] ) && $cached['hash'] === $hash ) {
 			// Reprice without re-sealing when the commercial terms changed (audit
@@ -121,7 +124,9 @@ class CrawlerToll_Sealed_Gate {
 			$bundle_differ    = wp_json_encode( $cached_bundle ) !== wp_json_encode( $bundle );
 			$cached_url_path  = isset( $cached['url_path'] ) ? $cached['url_path'] : null;
 			$url_path_differs = $cached_url_path !== $url_path;
-			if ( $cached_price !== $price || $cached_curr !== $curr || $meters_differ || $tiers_differ || $bundle_differ || $url_path_differs ) {
+			$cached_egate  = ! empty( $cached['email_gate'] );
+			$egate_differs = $cached_egate !== $email_gate;
+			if ( $cached_price !== $price || $cached_curr !== $curr || $meters_differ || $tiers_differ || $bundle_differ || $url_path_differs || $egate_differs ) {
 				$res = ( new CrawlerToll_Registry() )->update_sealed_price(
 					$cid,
 					$price,
@@ -129,7 +134,8 @@ class CrawlerToll_Sealed_Gate {
 					$meters_differ ? $meter : false,
 					$tiers_differ ? $tiers : false,
 					$bundle_differ ? ( null === $bundle ? null : $bundle ) : false,
-					$url_path_differs ? ( null === $url_path ? null : $url_path ) : false
+					$url_path_differs ? ( null === $url_path ? null : $url_path ) : false,
+					$egate_differs ? ( $email_gate ? true : null ) : false
 				);
 				if ( ! is_wp_error( $res ) ) {
 					$cached['price_micros'] = $price;
@@ -145,6 +151,9 @@ class CrawlerToll_Sealed_Gate {
 					}
 					if ( $url_path_differs ) {
 						$cached['url_path'] = $url_path;
+					}
+					if ( $egate_differs ) {
+						$cached['email_gate'] = $email_gate;
 					}
 					update_post_meta( $post_id, self::META_KEY, $cached );
 				}
@@ -170,7 +179,8 @@ class CrawlerToll_Sealed_Gate {
 			$meter,
 			$tiers,
 			$bundle,
-			$url_path
+			$url_path,
+			$email_gate
 		);
 		if ( is_wp_error( $result ) || empty( $result['status'] ) || 'registered' !== $result['status'] ) {
 			return false;
@@ -189,6 +199,7 @@ class CrawlerToll_Sealed_Gate {
 				'tiers'         => $tiers,
 				'bundle'        => $bundle,
 				'url_path'      => $url_path,
+				'email_gate'    => $email_gate,
 				'registered_at' => current_time( 'mysql' ),
 			)
 		);

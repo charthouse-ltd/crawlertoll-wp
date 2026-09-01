@@ -43,11 +43,13 @@ PREMIUM_ONLY=(
 	'includes/class-crawlertoll-pricing.php'
 	'includes/class-crawlertoll-alerts.php'
 	'includes/class-crawlertoll-catalogue-updater.php'
+	'includes/class-crawlertoll-subscribers.php'
 	'admin/views/pro-dashboard.php'
 	'admin/views/pro-logs.php'
 	'admin/views/pro-pricing.php'
 	'admin/views/pro-alerts.php'
 	'admin/views/pro-rails.php'
+	'admin/views/pro-readers.php'
 )
 
 # Pro React bundle + Pro app source — stripped from the FREE zip only. The free
@@ -109,7 +111,7 @@ for f in "${PREMIUM_ONLY[@]}"; do
 	if [ -e "$FREE/$f" ]; then echo "  FAIL: Pro file present in free build: $f"; bad=1; else echo "  ok: stripped $f"; fi
 done
 # Belt-and-braces: no Pro class DEFINITION may survive anywhere in the free tree.
-for cls in CrawlerToll_DB CrawlerToll_Logger CrawlerToll_Provenance CrawlerToll_Pricing CrawlerToll_Alerts CrawlerToll_CatalogueUpdater; do
+for cls in CrawlerToll_DB CrawlerToll_Logger CrawlerToll_Provenance CrawlerToll_Pricing CrawlerToll_Alerts CrawlerToll_CatalogueUpdater CrawlerToll_Subscribers; do
 	if grep -rqE "class[[:space:]]+${cls}\b" "$FREE"; then echo "  FAIL: free build defines Pro class ${cls}"; bad=1; fi
 done
 

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { fetchOffer, hasStripeKey, hasWallet, meterTokenStore, redeemMeter, renewPass, UnlockError } from "./api";
+import { fetchOffer, hasStripeKey, hasWallet, markEmailVerified, meterTokenStore, redeemEmailGrant, redeemMeter, renewPass, requestEmailLink, UnlockError, unlockConfig } from "./api";
 import type { SettlementPass } from "./api";
 import { offerToRails, type RailTile, type SignedOffer } from "./offer";
 import { payX402, startStripe } from "./payments";
@@ -7,7 +7,7 @@ import type { PaidRelease } from "./payments";
 import { sanitizeBody } from "./sanitize";
 import { unseal, InsecureContextError, type SealedBlob } from "./unseal";
 
-type State = "idle" | "loading" | "menu" | "stripe" | "processing" | "unlocked" | "error" | "unavailable";
+type State = "idle" | "loading" | "menu" | "stripe" | "processing" | "unlocked" | "error" | "unavailable" | "email" | "email-sent";
 
 // CEK persistence (R1 launch blocker, lineup freeze 2026-08-05 D8-2): a reader
 // who paid keeps access across reloads — and across LOCAL post-settlement
@@ -171,6 +171,19 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
   const [renewNote, setRenewNote] = useState("");
   const [stripePass, setStripePass] = useState("");
   const [expressUp, setExpressUp] = useState(false);
+  // A5 (email gate): the form's field state lives here; emailMode/restBase ride
+  // the mount (server-emitted). restBase empty = email gate can't run (the
+  // reader-facing endpoints live on the WP site itself).
+  const emailMode = mount.dataset.emailMode === "pur" ? "pur" : "split";
+  const restBase = mount.dataset.restUrl || "";
+  const siteName = mount.dataset.siteName || "this site";
+  const marketingLabel = `Send me news and offers from ${siteName}`;
+  const [emailAddr, setEmailAddr] = useState("");
+  const [emailConsentFunctional, setEmailConsentFunctional] = useState(false);
+  const [emailConsentMarketing, setEmailConsentMarketing] = useState(false);
+  const [emailError, setEmailError] = useState("");
+  const [emailBusy, setEmailBusy] = useState(false);
+  const grantAttempted = useRef(false);
   const stripeNode = useRef<HTMLDivElement>(null);
   const stripeExpressNode = useRef<HTMLDivElement>(null);
   const stripeConfirm = useRef<null | (() => Promise<PaidRelease>)>(null);
@@ -317,12 +330,60 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
     }
   };
 
+  // A5: magic-link landing. The reader clicked the link in their email and
+  // arrived with ?ct_email_grant=<token> — redeem it SILENTLY (no click), strip
+  // the param, and tell WP to mark the subscriber verified. This must win over
+  // the cached-CEK/roaming effects below (grantAttempted ref): the link is a
+  // fresh, explicit proof of access. An expired/used link (410) drops the
+  // reader into the email form with honest copy so they can request a new one.
+  useEffect(() => {
+    if (!ready) {
+      return;
+    }
+    let token = "";
+    try {
+      const url = new URL(window.location.href);
+      token = url.searchParams.get("ct_email_grant") || "";
+    } catch {
+      return;
+    }
+    if (!/^[0-9a-f]{32}$/.test(token)) {
+      return;
+    }
+    grantAttempted.current = true;
+    const strip = () => {
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("ct_email_grant");
+        window.history.replaceState({}, "", url.toString());
+      } catch {
+        /* ignore */
+      }
+    };
+    setState("processing");
+    redeemEmailGrant(unlockConfig.registryBase, token)
+      .then(async (r) => {
+        strip();
+        markEmailVerified(restBase, token); // fail-open bookkeeping
+        await reveal(r.cek, false, r.pass);
+      })
+      .catch((e) => {
+        strip();
+        setEmailError(e instanceof UnlockError ? e.message : "Could not verify your access link.");
+        setState("email"); // the form offers to send a fresh link
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Returning reader: a previously released CEK unlocks instantly, no payment.
   // An EXPIRED cache entry tries the silent pass renewal before giving up, and
   // a straight miss roams recent passes (A4 bundle coverage).
   useEffect(() => {
     if (!ready) {
       return;
+    }
+    if (grantAttempted.current) {
+      return; // a magic-link redeem is in flight — it decides this mount
     }
     const cached = cekRead(contentId);
     if (cached) {
@@ -353,7 +414,7 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
       const o = await fetchOffer(contentId);
       applyOffer(o);
       const t = offerToRails(o, { hasStripeKey: hasStripeKey(), hasWallet: hasWallet() });
-      if (t.length === 0 && !(o.meter && o.meter.remaining > 0)) {
+      if (t.length === 0 && !(o.meter && o.meter.remaining > 0) && !(o.email_gate === true && restBase)) {
         setState("unavailable");
         return;
       }
@@ -380,6 +441,41 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
         return;
       }
       fail(e);
+    }
+  };
+
+  // A5: request the magic link. Client-side validation mirrors the server's
+  // (is_email, required consents) so the honest error lands without a round
+  // trip; the WP endpoint re-validates everything anyway.
+  const submitEmail = async () => {
+    setEmailError("");
+    const addr = emailAddr.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(addr)) {
+      setEmailError("That doesn't look like an email address.");
+      return;
+    }
+    if (!emailConsentFunctional) {
+      setEmailError("We need your OK to email you the access link.");
+      return;
+    }
+    if (emailMode === "pur" && !emailConsentMarketing) {
+      setEmailError("The free email unlock needs the newsletter consent — or choose a paid option.");
+      return;
+    }
+    setEmailBusy(true);
+    try {
+      await requestEmailLink(restBase, {
+        email: addr,
+        content_id: contentId,
+        consent_functional: emailConsentFunctional,
+        consent_marketing: emailConsentMarketing,
+        consent_text: marketingLabel, // stored verbatim — the consent audit trail
+      });
+      setState("email-sent");
+    } catch (e) {
+      setEmailError(e instanceof UnlockError ? e.message : "We couldn't send the email — please try again in a moment.");
+    } finally {
+      setEmailBusy(false);
     }
   };
 
@@ -566,6 +662,88 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
           </button>
           {footer}
         </>
+      ) : state === "email" ? (
+        <>
+          <p style={{ fontSize: 15, fontWeight: 600, marginBottom: 4 }}>Read free with your email</p>
+          <p style={{ fontSize: 13, color: "var(--ct-muted)", margin: "0 0 12px" }}>
+            We email you a one-time link that opens this article. No payment, no account.
+          </p>
+          <input
+            type="email"
+            value={emailAddr}
+            onChange={(e) => setEmailAddr(e.target.value)}
+            placeholder="you@example.com"
+            aria-label="Your email address"
+            style={{
+              width: "100%",
+              boxSizing: "border-box",
+              padding: "9px 12px",
+              borderRadius: 10,
+              border: "1px solid var(--ct-border)",
+              background: "var(--ct-elevated)",
+              color: "var(--ct-text)",
+              fontSize: 14,
+              marginBottom: 10,
+            }}
+          />
+          <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 13, marginBottom: 6, cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={emailConsentFunctional}
+              onChange={(e) => setEmailConsentFunctional(e.target.checked)}
+              style={{ marginTop: 2 }}
+            />
+            <span>Email me my access link <span style={{ color: "var(--ct-muted)" }}>(required)</span></span>
+          </label>
+          <label style={{ display: "flex", gap: 8, alignItems: "flex-start", fontSize: 13, marginBottom: 10, cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={emailConsentMarketing}
+              onChange={(e) => setEmailConsentMarketing(e.target.checked)}
+              style={{ marginTop: 2 }}
+            />
+            <span>
+              {marketingLabel}{" "}
+              <span style={{ color: "var(--ct-muted)" }}>{emailMode === "pur" ? "(required for the free unlock)" : "(optional)"}</span>
+            </span>
+          </label>
+          {emailError ? (
+            <p style={{ fontSize: 13, fontWeight: 600, color: "#b91c1c", margin: "0 0 10px" }}>{emailError}</p>
+          ) : null}
+          <button type="button" onClick={submitEmail} disabled={emailBusy} style={{ ...btn, opacity: emailBusy ? 0.6 : 1 }}>
+            {emailBusy ? "Sending…" : "Send my access link"}
+          </button>
+          <p style={{ marginTop: 10, fontSize: 12 }}>
+            <button
+              type="button"
+              onClick={() => setState("menu")}
+              style={{ background: "none", border: "none", padding: 0, color: "var(--ct-muted)", textDecoration: "underline", cursor: "pointer", fontSize: 12 }}
+            >
+              back to all unlock options
+            </button>
+          </p>
+          {footer}
+        </>
+      ) : state === "email-sent" ? (
+        <>
+          <p style={{ fontSize: 15, fontWeight: 600, marginBottom: 4 }}>Check your inbox</p>
+          <p style={{ fontSize: 13, color: "var(--ct-muted)", margin: "0 0 8px" }}>
+            We sent a one-time access link to <strong>{emailAddr.trim()}</strong>. It works once and expires after
+            15 minutes — clicking it opens this article right here.
+          </p>
+          <p style={{ fontSize: 12, color: "var(--ct-muted)", margin: 0 }}>
+            Nothing arrived? Check spam, or{" "}
+            <button
+              type="button"
+              onClick={() => setState("email")}
+              style={{ background: "none", border: "none", padding: 0, color: "var(--ct-muted)", textDecoration: "underline", cursor: "pointer", fontSize: 12 }}
+            >
+              send it again
+            </button>
+            .
+          </p>
+          {footer}
+        </>
       ) : (
         <>
           {renewNote ? (
@@ -579,6 +757,19 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
                 <span style={{ color: "var(--ct-muted)" }}>
                   uses 1 free read — {offer.meter.remaining - 1} of {offer.meter.count} left after this one
                 </span>
+              </button>
+            ) : null}
+            {offer?.email_gate === true && restBase ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setEmailError("");
+                  setState("email");
+                }}
+                style={tileBtn}
+              >
+                <span style={{ fontWeight: 600 }}>Read free with your email</span>
+                <span style={{ color: "var(--ct-muted)" }}>we email you a one-time access link</span>
               </button>
             ) : null}
             {offer?.meter && offer.meter.remaining <= 0 ? (

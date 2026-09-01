@@ -46,6 +46,9 @@ export interface SignedOffer {
     scope_path: string;
     tiers: Array<{ tier_id: string; price_micros: number; duration_hours: number | null }>;
   };
+  // Email gate (A5, spec §5.5): INSIDE the signed offer — humans may unlock
+  // free after verifying an email address via a magic link (rail "email").
+  email_gate?: boolean;
   // Metered free articles (Pro): UNSIGNED sibling of the signed offer — UI state
   // only. Present when this human reader is on a metered path. remaining 0 means
   // the allowance is used up (paid rails only).

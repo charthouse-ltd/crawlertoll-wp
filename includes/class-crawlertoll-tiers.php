@@ -185,6 +185,29 @@ class CrawlerToll_Tiers {
 	}
 
 	/**
+	 * Email-gated access (Pro, A5, spec §5.5): a rule flagged "email gate" lets a
+	 * human reader unlock the article free after verifying an email address (the
+	 * publisher gets a reachable subscriber; AI crawlers always pay). Resolve the
+	 * flag for a post being sealed — Pro-gated like tiers/bundles, so the free
+	 * build never registers it.
+	 *
+	 * @param int   $post_id
+	 * @param array $settings
+	 * @return bool True only when the winning rule explicitly carries the flag.
+	 */
+	public static function resolve_email_gate_for_post( $post_id, $settings ) {
+		if ( ! class_exists( 'CrawlerToll_Pro_Admin' ) || ! CrawlerToll_Pro_Admin::is_pro_active() ) {
+			return false;
+		}
+		$path = self::url_path_for_post( $post_id );
+		if ( null === $path ) {
+			return false;
+		}
+		$rule = self::matching_rule( $path, $settings );
+		return null !== $rule && ! empty( $rule['email_gate'] );
+	}
+
+	/**
 	 * The permalink path a post seals under — the registry matches scoped
 	 * (bundle) passes against it (content_id is host/post/N, not a URL path).
 	 *

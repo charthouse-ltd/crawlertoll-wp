@@ -163,6 +163,79 @@ export function redeemMeter(contentId: string, meterToken: unknown): Promise<Key
   return postKey(contentId, { rail: "meter", meter_token: meterToken });
 }
 
+// ─── Email gate (A5, spec §5.5) ─────────────────────────────────────
+// The reader-facing steps hit the WP site's OWN REST endpoint (WP is the data
+// controller — it stores the address + consent) which forwards server-side to
+// the registry; only the redeem step talks to the registry directly (public).
+// restBase comes from the mount's data-rest-url — subdirectory installs break
+// a hardcoded /wp-json, so it is emitted server-side via rest_url().
+
+export interface EmailRequestResult {
+  status: string;
+  expires_in: number;
+}
+
+/** Ask the site to email a one-time access link to the reader. */
+export async function requestEmailLink(
+  restBase: string,
+  payload: { email: string; content_id: string; consent_functional: boolean; consent_marketing: boolean; consent_text: string },
+): Promise<EmailRequestResult> {
+  const res = await safeFetch(`${restBase.replace(/\/$/, "")}/email/request`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (res.status === 200) {
+    return (await res.json()) as EmailRequestResult;
+  }
+  const body = (await res.json().catch(() => ({}))) as { code?: string; message?: string };
+  const code = typeof body.code === "string" ? body.code : `email_${res.status}`;
+  // The PHP side already maps registry failures to plain sentences — prefer
+  // its message, fall back to honest generic copy.
+  const message =
+    typeof body.message === "string" && body.message
+      ? body.message
+      : code === "invalid_email"
+        ? "That doesn't look like an email address."
+        : code === "rate_limited"
+          ? "Too many requests — please try again later."
+          : "We couldn't send the email — please try again in a moment.";
+  throw new UnlockError(message, code);
+}
+
+/** Exchange the one-time magic-link token for the CEK (public registry route). */
+export async function redeemEmailGrant(registryBase: string, token: string): Promise<KeyResponse> {
+  const res = await safeFetch(`${registryBase.replace(/\/$/, "")}/v1/email/redeem`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token }),
+  });
+  if (res.status === 200) {
+    return (await res.json()) as KeyResponse;
+  }
+  if (res.status === 410) {
+    throw new UnlockError("This link has expired or was already used — request a new one below.", "grant_expired_or_used");
+  }
+  if (res.status === 400) {
+    throw new UnlockError("This access link is malformed.", "malformed_token");
+  }
+  if (res.status === 429) {
+    throw new UnlockError("Too many attempts — please try again later.", "rate_limited");
+  }
+  throw new UnlockError("Could not verify your access link.", `email_redeem_${res.status}`);
+}
+
+/** Tell WP the grant redeemed so it can mark the subscriber verified (fail-open). */
+export function markEmailVerified(restBase: string, token: string): void {
+  void safeFetch(`${restBase.replace(/\/$/, "")}/email-verified`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token }),
+  }).catch(() => {
+    /* bookkeeping only — the reader already holds the CEK */
+  });
+}
+
 /**
  * A1: silent renewal — re-present an unexpired settlement pass for a fresh CEK,
  * no new payment. The registry resolves the pass server-side (rail recorded at

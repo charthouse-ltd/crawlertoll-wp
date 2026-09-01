@@ -104,6 +104,9 @@ export interface PathRule {
   // bundle_tiers are priced like access tiers (usually above single-article).
   bundle?: boolean;
   bundle_tiers?: AccessTier[];
+  // Email gate (Pro, A5, spec §5.5): humans may unlock free after verifying
+  // an email address (publisher gains a reachable subscriber). Crawlers pay.
+  email_gate?: boolean;
 }
 
 export interface AccessTier {
