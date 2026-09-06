@@ -74,6 +74,43 @@ $site_url = home_url();
 	</div>
 	<?php endif; ?>
 
+	<!-- W7 onboarding: live "Get started" checklist -->
+	<?php
+	$ct_onb   = class_exists( 'CrawlerToll_Admin' ) ? CrawlerToll_Admin::onboarding_items() : array();
+	$ct_done  = count( array_filter( $ct_onb, function ( $i ) { return ! empty( $i['ok'] ); } ) );
+	$ct_total = count( $ct_onb );
+	?>
+	<?php if ( $ct_onb && $ct_done < $ct_total ) : ?>
+	<div class="ct-card" id="crawlertoll-onboarding">
+		<h2>
+			<span class="dashicons dashicons-yes-alt"></span>
+			<?php
+			printf(
+				/* translators: 1: done, 2: total */
+				esc_html__( 'Get started — %1$d of %2$d done', 'crawlertoll' ),
+				(int) $ct_done,
+				(int) $ct_total
+			);
+			?>
+		</h2>
+		<p class="ct-card-desc"><?php esc_html_e( 'Five checks between you and your first paid unlock. Each one links to where you fix it. This card disappears when everything is green.', 'crawlertoll' ); ?></p>
+		<ol style="margin:0;padding-left:0;list-style:none;">
+			<?php foreach ( $ct_onb as $ct_item ) : ?>
+				<li style="display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-top:1px solid var(--ct-border,#e5e7eb);">
+					<span class="dashicons <?php echo $ct_item['ok'] ? 'dashicons-yes' : 'dashicons-marker'; ?>" style="color:<?php echo $ct_item['ok'] ? '#1a7f37' : '#b45309'; ?>;flex:none;margin-top:2px;"></span>
+					<span style="flex:1;">
+						<strong><?php echo esc_html( $ct_item['label'] ); ?></strong><br>
+						<span style="font-size:13px;color:var(--ct-text-muted);"><?php echo esc_html( $ct_item['hint'] ); ?></span>
+						<?php if ( ! $ct_item['ok'] && ! empty( $ct_item['href'] ) ) : ?>
+							<br><a href="<?php echo esc_url( $ct_item['href'] ); ?>" style="font-size:13px;"><?php esc_html_e( 'Fix this →', 'crawlertoll' ); ?></a>
+						<?php endif; ?>
+					</span>
+				</li>
+			<?php endforeach; ?>
+		</ol>
+	</div>
+	<?php endif; ?>
+
 	<!-- Enforcement toggle -->
 	<div class="ct-card">
 		<h2>

@@ -447,3 +447,25 @@ export function wallEvent(restBase: string, event: WallEvent): void {
     /* beacon is optional */
   }
 }
+
+// ─── Cross-device transfer (W6) ─────────────────────────────────────
+// The paying device asks the registry for a short single-use code bound to
+// its settlement pass; the other device claims it and renews — no new payment.
+export async function linkPass(registryBase: string, passId: string): Promise<{ code: string; expires_in: number }> {
+  const res = await safeFetch(`${registryBase.replace(/\/$/, "")}/v1/sealed/pass/${passId}/link`, { method: "POST" });
+  if (res.status === 200) return (await res.json()) as { code: string; expires_in: number };
+  if (res.status === 404) throw new UnlockError("This access can't be shared any more — it may have expired.", "pass_gone");
+  throw new UnlockError("Could not create a transfer code right now.", `link_${res.status}`);
+}
+
+export async function claimPassLink(registryBase: string, code: string): Promise<{ pass_id: string; content_id: string; scope_path: string | null }> {
+  const res = await safeFetch(`${registryBase.replace(/\/$/, "")}/v1/sealed/pass/claim`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code }),
+  });
+  if (res.status === 200) return (await res.json()) as { pass_id: string; content_id: string; scope_path: string | null };
+  if (res.status === 410) throw new UnlockError("That code is invalid, expired or already used. Codes work once and for 10 minutes.", "code_invalid");
+  if (res.status === 429) throw new UnlockError("Too many attempts — please wait a minute.", "rate_limited");
+  throw new UnlockError("Could not check the code right now.", `claim_${res.status}`);
+}

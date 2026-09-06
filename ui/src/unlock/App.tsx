@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { fetchOffer, hasStripeKey, hasWallet, markEmailVerified, meterTokenStore, redeemEmailGrant, redeemMeter, renewPass, requestEmailLink, UnlockError, unlockConfig, wallEvent, type WallEvent } from "./api";
+import { fetchOffer, hasStripeKey, hasWallet, markEmailVerified, meterTokenStore, redeemEmailGrant, redeemMeter, renewPass, requestEmailLink, UnlockError, unlockConfig, wallEvent, type WallEvent, linkPass, claimPassLink } from "./api";
 import type { SettlementPass } from "./api";
 import { lowestPriceLabel, offerToRails, type RailTile, type SignedOffer } from "./offer";
 import { payX402, startStripe } from "./payments";
+import qrcode from "qrcode-generator";
 import type { PaidRelease } from "./payments";
 import { sanitizeBody } from "./sanitize";
 import { unseal, InsecureContextError, type SealedBlob } from "./unseal";
@@ -169,6 +170,15 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
   // with a one-line "access ended" note so the re-pay is understood as a
   // renewal, not a double charge. (A3 refines the full renew copy.)
   const [renewNote, setRenewNote] = useState("");
+  // W6 cross-device transfer: issued code + QR (on the paying device) and the
+  // typed-code entry (on the other device).
+  const [transfer, setTransfer] = useState<{ code: string; svg: string; url: string } | null>(null);
+  const [transferBusy, setTransferBusy] = useState(false);
+  const [transferMsg, setTransferMsg] = useState("");
+  const [codeEntry, setCodeEntry] = useState(false);
+  const [codeInput, setCodeInput] = useState("");
+  const [codeBusy, setCodeBusy] = useState(false);
+  const [codeError, setCodeError] = useState("");
   // Card checkout: the tier id being bought ('' = single price); null = not in card flow.
   const [stripeTier, setStripeTier] = useState<string | null>(null);
   const [expressUp, setExpressUp] = useState(false);
@@ -347,6 +357,40 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
     }
   };
 
+  // W6: transfer-code landing (?ct_link=CODE from the QR on another device).
+  // Claim silently, strip the param; a bad code just shows the wall with a note.
+  useEffect(() => {
+    if (!ready) {
+      return;
+    }
+    let code = "";
+    try {
+      const url = new URL(window.location.href);
+      code = url.searchParams.get("ct_link") || "";
+    } catch {
+      return;
+    }
+    if (!/^[A-Za-z0-9]{8}$/.test(code)) {
+      return;
+    }
+    grantAttempted.current = true;
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("ct_link");
+      window.history.replaceState({}, "", url.toString());
+    } catch {
+      /* cosmetic */
+    }
+    void claimCode(code).then((ok) => {
+      if (!ok) {
+        setCodeEntry(true);
+        setState("menu");
+        void loadMenu(true);
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready]);
+
   // A5: magic-link landing. The reader clicked the link in their email and
   // arrived with ?ct_email_grant=<token> — redeem it SILENTLY (no click), strip
   // the param, and tell WP to mark the subscriber verified. This must win over
@@ -444,6 +488,53 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
   // Metered free read: redeem the allowance instead of paying. A rejected grant
   // (exhausted in another tab, expired token) re-fetches the offer — the menu
   // then shows the paid rails with remaining 0.
+  // W6: redeem a transfer code → renew against the transferred pass → reveal.
+  const claimCode = async (raw: string): Promise<boolean> => {
+    const code = raw.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    if (code.length < 8) {
+      setCodeError("Enter the 8-character code shown on your other device.");
+      return false;
+    }
+    setCodeBusy(true);
+    setCodeError("");
+    try {
+      const claimed = await claimPassLink(unlockConfig.registryBase, code);
+      const r = await renewPass(contentId, claimed.pass_id);
+      passListPush(claimed.pass_id);
+      setRenewNote("");
+      await reveal(r.cek, false, r.pass ?? { pass_id: claimed.pass_id, expires_at: null }, "unlock_renewal");
+      return true;
+    } catch (e) {
+      setCodeError(e instanceof UnlockError ? e.message : "Could not use that code.");
+      return false;
+    } finally {
+      setCodeBusy(false);
+    }
+  };
+
+  // W6: the paying device asks for a code + QR the reader can open elsewhere.
+  const startTransfer = async () => {
+    const passId = cekRead(contentId)?.p;
+    if (!passId) {
+      setTransferMsg("This unlock has no transferable pass (free reads and email unlocks are per device).");
+      return;
+    }
+    setTransferBusy(true);
+    setTransferMsg("");
+    try {
+      const { code } = await linkPass(unlockConfig.registryBase, passId);
+      const url = `${window.location.origin}${window.location.pathname}?ct_link=${code}`;
+      const qr = qrcode(0, "M");
+      qr.addData(url);
+      qr.make();
+      setTransfer({ code, url, svg: qr.createSvgTag({ cellSize: 4, margin: 2, scalable: true }) });
+    } catch (e) {
+      setTransferMsg(e instanceof UnlockError ? e.message : "Could not create a transfer code right now.");
+    } finally {
+      setTransferBusy(false);
+    }
+  };
+
   const readFree = async () => {
     if (!offer?.meter) {
       return;
@@ -594,7 +685,44 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
   if (state === "unlocked") {
     // The decrypted body, sanitized. (Raw post_content — dynamic blocks/shortcodes
     // render via the_content server-side in a follow-up; static HTML renders here.)
-    return <div className="ct-unlocked" dangerouslySetInnerHTML={{ __html: bodyHtml }} />;
+    return (
+      <>
+        <div className="ct-unlocked" dangerouslySetInnerHTML={{ __html: bodyHtml }} />
+        <div className="ct-transfer" style={{ marginTop: 18, fontSize: 12, color: "var(--ct-muted)" }}>
+          {transfer ? (
+            <div style={{ ...card, padding: 14 }}>
+              <p style={{ fontSize: 14, fontWeight: 600, color: "var(--ct-text)", margin: "0 0 6px" }}>Read this on another device</p>
+              <p style={{ margin: "0 0 10px" }}>Scan the code with your phone, or open this article there and enter the code. It works once and expires in 10 minutes.</p>
+              <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
+                <div aria-label={`QR code for ${transfer.url}`} style={{ width: 132, height: 132, background: "#fff", padding: 4, borderRadius: 8 }} dangerouslySetInnerHTML={{ __html: transfer.svg }} />
+                <div>
+                  <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 26, letterSpacing: "0.12em", color: "var(--ct-text)" }}>
+                    {transfer.code.slice(0, 4)}-{transfer.code.slice(4)}
+                  </div>
+                  <div style={{ marginTop: 6 }}>Code for this article on {window.location.hostname}</div>
+                </div>
+              </div>
+              <button type="button" onClick={() => setTransfer(null)} style={{ ...btn, marginTop: 12 }}>
+                Done
+              </button>
+            </div>
+          ) : (
+            <p style={{ margin: 0 }}>
+              Unlocked on this device.{" "}
+              <button
+                type="button"
+                onClick={startTransfer}
+                disabled={transferBusy}
+                style={{ background: "none", border: "none", padding: 0, color: "var(--ct-muted)", textDecoration: "underline", cursor: "pointer", fontSize: 12 }}
+              >
+                {transferBusy ? "Creating a code…" : "Read it on another device"}
+              </button>
+              {transferMsg ? <span> — {transferMsg}</span> : null}
+            </p>
+          )}
+        </div>
+      </>
+    );
   }
 
   const footer = (
@@ -818,6 +946,26 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
                   `You've read your ${offer.meter.count} free article${offer.meter.count === 1 ? "" : "s"} for this ${offer.meter.window_days}-day window — unlock to keep reading.`}
               </p>
             ) : null}
+            {codeEntry ? (
+              <div style={{ margin: "0 0 10px" }}>
+                <p style={{ fontSize: 13, fontWeight: 600, margin: "0 0 6px" }}>Enter the code from your other device</p>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <input
+                    type="text"
+                    value={codeInput}
+                    onChange={(e) => setCodeInput(e.target.value)}
+                    placeholder="K7Q2-M9XD"
+                    aria-label="Transfer code"
+                    autoCapitalize="characters"
+                    style={{ flex: 1, padding: "8px 10px", borderRadius: 10, border: "1px solid var(--ct-border)", background: "var(--ct-elevated)", color: "var(--ct-text)", fontSize: 15, fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", letterSpacing: "0.08em" }}
+                  />
+                  <button type="button" onClick={() => void claimCode(codeInput)} disabled={codeBusy} style={{ ...btn, marginTop: 0 }}>
+                    {codeBusy ? "Checking…" : "Unlock"}
+                  </button>
+                </div>
+                {codeError ? <p style={{ fontSize: 12, color: "var(--ct-danger, #c0392b)", margin: "6px 0 0" }}>{codeError}</p> : null}
+              </div>
+            ) : null}
             {tiles.map((t) => (
               <button
                 key={t.key}
@@ -833,6 +981,17 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
               </button>
             ))}
           </div>
+          {!codeEntry ? (
+            <p style={{ marginTop: 8, fontSize: 12 }}>
+              <button
+                type="button"
+                onClick={() => setCodeEntry(true)}
+                style={{ background: "none", border: "none", padding: 0, color: "var(--ct-muted)", textDecoration: "underline", cursor: "pointer", fontSize: 12 }}
+              >
+                Already unlocked on another device? Enter your code
+              </button>
+            </p>
+          ) : null}
           {footer}
         </>
       )}

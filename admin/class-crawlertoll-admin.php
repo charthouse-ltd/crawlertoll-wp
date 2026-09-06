@@ -304,6 +304,61 @@ class CrawlerToll_Admin {
 		return $out;
 	}
 
+	/**
+	 * W7 onboarding: live "Get started" checks with deep links. Free-safe.
+	 *
+	 * @return array<int,array{ok:bool,label:string,hint:string,href:string}>
+	 */
+	public static function onboarding_items() {
+		$settings  = crawlertoll_get_settings();
+		$https     = 'https' === wp_parse_url( home_url(), PHP_URL_SCHEME );
+		$stripe_ok = class_exists( 'CrawlerToll_Stripe' ) && CrawlerToll_Stripe::is_configured( $settings );
+		$usdc_ok   = ! empty( $settings['x402_pay_to'] );
+		$health    = get_transient( 'crawlertoll_registry_health' );
+		if ( false === $health && class_exists( 'CrawlerToll_Registry' ) ) {
+			$base   = defined( 'CRAWLERTOLL_REGISTRY_URL' ) ? CRAWLERTOLL_REGISTRY_URL : CrawlerToll_Registry::REGISTRY_URL;
+			$res    = wp_remote_get( $base . '/health', array( 'timeout' => 5 ) );
+			$health = is_wp_error( $res ) ? 'unreachable' : 'http ' . wp_remote_retrieve_response_code( $res );
+			set_transient( 'crawlertoll_registry_health', $health, 300 );
+		}
+		$registry_ok = 'http 200' === $health;
+		$premium_ids = get_posts( array( 'post_type' => 'any', 'post_status' => 'publish', 'posts_per_page' => 1, 'fields' => 'ids', 'meta_key' => '_crawlertoll_premium', 'meta_value' => '1' ) ); // phpcs:ignore WordPress.DB.SlowDBQuery
+		$sealed_ids  = get_posts( array( 'post_type' => 'any', 'post_status' => 'publish', 'posts_per_page' => 1, 'fields' => 'ids', 'meta_key' => '_crawlertoll_sealed_v1' ) ); // phpcs:ignore WordPress.DB.SlowDBQuery
+		$admin_base  = admin_url( 'options-general.php?page=crawlertoll' );
+		return array(
+			array(
+				'ok'    => $https,
+				'label' => __( 'Site runs on https', 'crawlertoll' ),
+				'hint'  => $https ? __( 'Card payments, wallet signatures and email links all need it — done.', 'crawlertoll' ) : __( 'Card payments (live mode), wallet signatures and email links require https. Ask your host for a free certificate, then change Site Address under Settings → General.', 'crawlertoll' ),
+				'href'  => $https ? '' : admin_url( 'options-general.php' ),
+			),
+			array(
+				'ok'    => $registry_ok,
+				'label' => __( 'Unlock service reachable', 'crawlertoll' ),
+				'hint'  => $registry_ok ? __( 'Your server can reach the key escrow that releases content after payment.', 'crawlertoll' ) : sprintf( /* translators: %s: status */ __( 'Your server could not reach the unlock service (%s). Sealed posts stay locked and nothing can be charged until it can — check outbound HTTPS on your host.', 'crawlertoll' ), (string) $health ),
+				'href'  => $registry_ok ? '' : $admin_base . '#crawlertoll-errors',
+			),
+			array(
+				'ok'    => $stripe_ok || $usdc_ok,
+				'label' => __( 'A way to get paid', 'crawlertoll' ),
+				'hint'  => $stripe_ok && $usdc_ok ? __( 'Cards on your Stripe account and USDC to your wallet — both live.', 'crawlertoll' ) : ( $stripe_ok ? __( 'Cards on your Stripe account. Add a USDC address to let AI agents pay too.', 'crawlertoll' ) : ( $usdc_ok ? __( 'USDC to your wallet. Add your Stripe keys so readers can pay by card.', 'crawlertoll' ) : __( 'Paste your Stripe keys (readers pay by card) and/or your USDC address (AI agents pay in stablecoin). The money goes straight to you.', 'crawlertoll' ) ) ),
+				'href'  => $admin_base . '#crawlertoll-stripe-pk',
+			),
+			array(
+				'ok'    => ! empty( $sealed_ids ),
+				'label' => __( 'A premium post is sealed', 'crawlertoll' ),
+				'hint'  => ! empty( $sealed_ids ) ? __( 'At least one article is encrypted and for sale.', 'crawlertoll' ) : ( ! empty( $premium_ids ) ? __( 'You marked a post premium — open it once in a private window to seal it (the first anonymous view encrypts and escrows the key).', 'crawlertoll' ) : __( 'Open any post in the editor, tick "Premium" in the CrawlerToll sidebar, place the paywall cut, publish, then view it once in a private window.', 'crawlertoll' ) ),
+				'href'  => ! empty( $premium_ids ) ? get_permalink( (int) $premium_ids[0] ) : admin_url( 'edit.php' ),
+			),
+			array(
+				'ok'    => ! empty( $sealed_ids ) && ( $stripe_ok || $usdc_ok ),
+				'label' => __( 'Test the wall as a reader', 'crawlertoll' ),
+				'hint'  => __( 'Open a sealed post in a private window: you should see the preview, the wall and your payment options. The Wall preview tab shows the same without leaving wp-admin.', 'crawlertoll' ),
+				'href'  => $admin_base . '&ct_tab=preview',
+			),
+		);
+	}
+
 	public function render_page() {
 		if ( ! current_user_can( 'manage_options' ) ) {
 			wp_die( esc_html__( 'Insufficient permissions.', 'crawlertoll' ) );
