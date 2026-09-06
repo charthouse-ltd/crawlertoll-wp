@@ -54,10 +54,10 @@ class CrawlerToll_Plugin {
 		// Decide on every front-end request, as early as possible after
 		// WP has populated the request context. `parse_request` runs
 		// before any content is loaded; perfect for short-circuiting.
-		add_action( 'parse_request', array( $this, 'on_parse_request' ), 1 );
+		add_action( 'parse_request', CrawlerToll_Guard::wrap( array( $this, 'on_parse_request' ), 'enforce.parse_request', CrawlerToll_Guard::FALLBACK_VOID ), 1 );
 
 		// Advertise RSL directives via the standard robots.txt filter.
-		add_filter( 'robots_txt', array( $this, 'augment_robots_txt' ), 10, 2 );
+		add_filter( 'robots_txt', CrawlerToll_Guard::wrap( array( $this, 'augment_robots_txt' ), 'discovery.robots_txt', CrawlerToll_Guard::FALLBACK_PASSTHROUGH ), 10, 2 );
 
 		// Serve /.well-known/context-license.json via the REST API
 		// (the cleanest path in WP — avoids rewrite-rule fragility).
@@ -212,7 +212,7 @@ class CrawlerToll_Plugin {
 			array(
 				'methods'             => 'GET',
 				'permission_callback' => '__return_true',
-				'callback'            => array( $this, 'rest_context_license' ),
+				'callback'            => CrawlerToll_Guard::rest( array( $this, 'rest_context_license' ), 'rest.context_license' ),
 			)
 		);
 
@@ -306,12 +306,12 @@ class CrawlerToll_Plugin {
 		register_rest_route( 'crawlertoll/v1', '/realised', array(
 			'methods'             => 'GET',
 			'permission_callback' => $pro_settings_perm,
-			'callback'            => array( $this, 'rest_realised' ),
+			'callback'            => CrawlerToll_Guard::rest( array( $this, 'rest_realised' ), 'rest.realised' ),
 		) );
 		register_rest_route( 'crawlertoll/v1', '/receipts/revoke', array(
 			'methods'             => 'POST',
 			'permission_callback' => $pro_settings_perm,
-			'callback'            => array( $this, 'rest_revoke_pass' ),
+			'callback'            => CrawlerToll_Guard::rest( array( $this, 'rest_revoke_pass' ), 'rest.revoke_pass' ),
 		) );
 
 		// Pro: provenance lookup.
@@ -341,7 +341,7 @@ class CrawlerToll_Plugin {
 			array(
 				'methods'             => 'POST',
 				'permission_callback' => '__return_true',
-				'callback'            => array( $this, 'rest_email_request' ),
+				'callback'            => CrawlerToll_Guard::rest( array( $this, 'rest_email_request' ), 'rest.email_request' ),
 			)
 		);
 		register_rest_route(
@@ -350,7 +350,7 @@ class CrawlerToll_Plugin {
 			array(
 				'methods'             => 'POST',
 				'permission_callback' => '__return_true',
-				'callback'            => array( $this, 'rest_email_verified' ),
+				'callback'            => CrawlerToll_Guard::rest( array( $this, 'rest_email_verified' ), 'rest.email_verified' ),
 			)
 		);
 
@@ -365,7 +365,7 @@ class CrawlerToll_Plugin {
 			array(
 				'methods'             => 'POST',
 				'permission_callback' => '__return_true',
-				'callback'            => array( $this, 'rest_stripe_intent' ),
+				'callback'            => CrawlerToll_Guard::rest( array( $this, 'rest_stripe_intent' ), 'rest.stripe_intent' ),
 			)
 		);
 		register_rest_route(
@@ -374,7 +374,7 @@ class CrawlerToll_Plugin {
 			array(
 				'methods'             => 'POST',
 				'permission_callback' => '__return_true',
-				'callback'            => array( $this, 'rest_stripe_confirm' ),
+				'callback'            => CrawlerToll_Guard::rest( array( $this, 'rest_stripe_confirm' ), 'rest.stripe_confirm' ),
 			)
 		);
 	}

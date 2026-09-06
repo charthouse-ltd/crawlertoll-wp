@@ -576,6 +576,46 @@ $site_url = home_url();
 		</div>
 	</div>
 
+	<!-- Error log + diagnostics (W4) -->
+	<?php $ct_errors = class_exists( 'CrawlerToll_Guard' ) ? CrawlerToll_Guard::entries() : array(); ?>
+	<div class="ct-card" id="crawlertoll-errors">
+		<h2>
+			<span class="dashicons dashicons-warning"></span>
+			<?php esc_html_e( 'Health and diagnostics', 'crawlertoll' ); ?>
+		</h2>
+		<p class="ct-card-desc"><?php esc_html_e( 'CrawlerToll runs every hook inside a guard: if something inside the plugin fails, your site keeps serving pages, protected content stays sealed, and the failure lands here instead of on your readers\' screens.', 'crawlertoll' ); ?></p>
+		<?php if ( empty( $ct_errors ) ) : ?>
+			<p style="font-size:13px;color:var(--ct-text-muted);margin:0 0 10px;"><?php esc_html_e( 'No errors recorded.', 'crawlertoll' ); ?></p>
+		<?php else : ?>
+			<table class="widefat striped" style="margin:4px 0 10px;">
+				<thead><tr>
+					<th><?php esc_html_e( 'Last seen', 'crawlertoll' ); ?></th>
+					<th><?php esc_html_e( 'Where', 'crawlertoll' ); ?></th>
+					<th><?php esc_html_e( 'Error', 'crawlertoll' ); ?></th>
+					<th><?php esc_html_e( 'Times', 'crawlertoll' ); ?></th>
+				</tr></thead>
+				<tbody>
+				<?php foreach ( array_slice( $ct_errors, 0, 20 ) as $ct_err ) : ?>
+					<tr>
+						<td><?php echo esc_html( human_time_diff( (int) $ct_err['last_seen'], time() ) ); ?> <?php esc_html_e( 'ago', 'crawlertoll' ); ?></td>
+						<td><code style="font-size:11px;"><?php echo esc_html( $ct_err['label'] ); ?></code></td>
+						<td style="font-size:12px;"><?php echo esc_html( $ct_err['message'] ); ?><br><span style="color:var(--ct-text-muted);"><?php echo esc_html( $ct_err['file'] . ':' . $ct_err['line'] ); ?></span></td>
+						<td><?php echo esc_html( (int) $ct_err['count'] ); ?></td>
+					</tr>
+				<?php endforeach; ?>
+				</tbody>
+			</table>
+			<p style="margin:0 0 10px;">
+				<a class="button" href="<?php echo esc_url( wp_nonce_url( admin_url( 'admin-post.php?action=crawlertoll_clear_errors' ), 'crawlertoll_clear_errors' ) ); ?>"><?php esc_html_e( 'Clear log', 'crawlertoll' ); ?></a>
+			</p>
+		<?php endif; ?>
+		<details>
+			<summary style="cursor:pointer;font-size:13px;"><?php esc_html_e( 'Copy diagnostics for support', 'crawlertoll' ); ?></summary>
+			<textarea readonly class="large-text code" rows="8" onclick="this.select();" style="margin-top:8px;"><?php echo esc_textarea( wp_json_encode( class_exists( 'CrawlerToll_Guard' ) ? CrawlerToll_Guard::diagnostics() : array(), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES ) ); ?></textarea>
+			<p class="description"><?php esc_html_e( 'Versions, configuration state and the last errors — no keys, no reader data. Paste it into a support email to hello@crawlertoll.com.', 'crawlertoll' ); ?></p>
+		</details>
+	</div>
+
 	<!-- Advanced -->
 	<div class="ct-card">
 		<h2>

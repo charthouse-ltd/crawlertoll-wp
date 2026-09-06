@@ -26,6 +26,8 @@ class CrawlerToll_Admin {
 		add_action( 'admin_init', array( $this, 'register_settings' ) );
 		add_action( 'admin_init', array( $this, 'handle_upgrade_notice_dismiss' ) );
 		add_action( 'admin_notices', array( $this, 'render_upgrade_notice' ) );
+		add_action( 'admin_notices', array( $this, 'render_error_notice' ) );
+		add_action( 'admin_post_crawlertoll_clear_errors', array( $this, 'handle_clear_errors' ) );
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_assets' ) );
 
 		// Initialise Pro admin if available.
@@ -102,6 +104,60 @@ class CrawlerToll_Admin {
 				'default'           => crawlertoll_default_settings(),
 			)
 		);
+	}
+
+	/**
+	 * W4: errors caught by CrawlerToll_Guard since the admin last opened the
+	 * settings page. Shown everywhere in wp-admin; the settings page itself
+	 * marks them seen and lists them under Advanced.
+	 *
+	 * @return void
+	 */
+	public function render_error_notice() {
+		if ( ! current_user_can( 'manage_options' ) || ! class_exists( 'CrawlerToll_Guard' ) ) {
+			return;
+		}
+		$n = CrawlerToll_Guard::badge();
+		if ( $n <= 0 ) {
+			return;
+		}
+		$page = isset( $_GET['page'] ) ? sanitize_text_field( wp_unslash( $_GET['page'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		if ( 'crawlertoll' === $page ) {
+			CrawlerToll_Guard::mark_seen();
+			return;
+		}
+		?>
+		<div class="notice notice-warning">
+			<p>
+				<strong><?php esc_html_e( 'CrawlerToll caught an error and kept your site running.', 'crawlertoll' ); ?></strong>
+				<?php
+				printf(
+					/* translators: 1: count, 2: link */
+					esc_html( _n( '%1$s error since you last looked. %2$s', '%1$s errors since you last looked. %2$s', $n, 'crawlertoll' ) ),
+					esc_html( number_format_i18n( $n ) ),
+					'<a href="' . esc_url( admin_url( 'options-general.php?page=crawlertoll#crawlertoll-errors' ) ) . '">' . esc_html__( 'View the log and copy diagnostics', 'crawlertoll' ) . '</a>'
+				);
+				?>
+			</p>
+		</div>
+		<?php
+	}
+
+	/**
+	 * admin-post: clear the error log (nonce + capability checked).
+	 *
+	 * @return void
+	 */
+	public function handle_clear_errors() {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html__( 'Not allowed.', 'crawlertoll' ) );
+		}
+		check_admin_referer( 'crawlertoll_clear_errors' );
+		if ( class_exists( 'CrawlerToll_Guard' ) ) {
+			CrawlerToll_Guard::clear();
+		}
+		wp_safe_redirect( admin_url( 'options-general.php?page=crawlertoll#crawlertoll-errors' ) );
+		exit;
 	}
 
 	/**

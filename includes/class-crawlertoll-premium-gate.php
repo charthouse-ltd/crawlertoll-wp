@@ -69,31 +69,53 @@ class CrawlerToll_Premium_Gate {
 		//    the real body. Residual (documented): a bare get_post($id) rendered
 		//    entirely outside any query/loop is unhookable — the universal
 		//    filter-paywall limitation. ──
-		add_filter( 'the_posts', array( $this, 'neutralize_query_posts' ), 10, 1 );
-		add_action( 'the_post', array( $this, 'neutralize_loop_post' ), 1, 1 );
+		add_filter( 'the_posts', CrawlerToll_Guard::wrap( array( $this, 'neutralize_query_posts' ), 'gate.the_posts', CrawlerToll_Guard::FALLBACK_PASSTHROUGH ), 10, 1 );
+		add_action( 'the_post', CrawlerToll_Guard::wrap( array( $this, 'neutralize_loop_post' ), 'gate.the_post', CrawlerToll_Guard::FALLBACK_VOID ), 1, 1 );
 
 		// ── content surfaces (each gated per-post) ──
-		add_filter( 'the_content', array( $this, 'filter_content' ), 7 );
-		add_filter( 'get_the_excerpt', array( $this, 'filter_excerpt' ), 11, 2 );
-		add_filter( 'the_excerpt_rss', array( $this, 'filter_excerpt_rss' ), 9 );
-		add_filter( 'the_content_feed', array( $this, 'filter_content_feed' ), 9, 2 );
-		add_filter( 'rest_prepare_post', array( $this, 'filter_rest' ), 10, 3 );
-		add_filter( 'oembed_response_data', array( $this, 'filter_oembed' ), 10, 2 );
+		add_filter( 'the_content', CrawlerToll_Guard::wrap( array( $this, 'filter_content' ), 'gate.the_content', CrawlerToll_Guard::FALLBACK_EMPTY ), 7 );
+		add_filter( 'get_the_excerpt', CrawlerToll_Guard::wrap( array( $this, 'filter_excerpt' ), 'gate.excerpt', CrawlerToll_Guard::FALLBACK_EMPTY ), 11, 2 );
+		add_filter( 'the_excerpt_rss', CrawlerToll_Guard::wrap( array( $this, 'filter_excerpt_rss' ), 'gate.excerpt_rss', CrawlerToll_Guard::FALLBACK_EMPTY ), 9 );
+		add_filter( 'the_content_feed', CrawlerToll_Guard::wrap( array( $this, 'filter_content_feed' ), 'gate.content_feed', CrawlerToll_Guard::FALLBACK_EMPTY ), 9, 2 );
+		add_filter( 'rest_prepare_post', function ( $response, $post, $request ) {
+			return CrawlerToll_Guard::run( 'gate.rest', function () use ( $response, $post, $request ) {
+				return $this->filter_rest( $response, $post, $request );
+			}, $this->rest_fallback( $response ) );
+		}, 10, 3 );
+		add_filter( 'oembed_response_data', CrawlerToll_Guard::wrap( array( $this, 'filter_oembed' ), 'gate.oembed', CrawlerToll_Guard::FALLBACK_PASSTHROUGH ), 10, 2 );
 
 		// ── SEO-plugin meta descriptions (auto-generated from content) ──
 		foreach ( array( 'wpseo_metadesc', 'rank_math/frontend/description', 'aioseo_description', 'seopress_titles_desc' ) as $hook ) {
-			add_filter( $hook, array( $this, 'filter_seo_description' ), 20 );
+			add_filter( $hook, CrawlerToll_Guard::wrap( array( $this, 'filter_seo_description' ), 'gate.seo_description', CrawlerToll_Guard::FALLBACK_EMPTY ), 20 );
 		}
 
 		// ── singular-page response: structured data, cache headers, agent 402 ──
-		add_action( 'wp_head', array( $this, 'emit_structured_data' ), 5 );
-		add_action( 'template_redirect', array( $this, 'on_singular_premium' ), 0 );
+		add_action( 'wp_head', CrawlerToll_Guard::wrap( array( $this, 'emit_structured_data' ), 'gate.structured_data', CrawlerToll_Guard::FALLBACK_VOID ), 5 );
+		add_action( 'template_redirect', CrawlerToll_Guard::wrap( array( $this, 'on_singular_premium' ), 'gate.singular', CrawlerToll_Guard::FALLBACK_VOID ), 0 );
 
 		// ── front-end unlock app (WS3 3.4): loads on a sealed page for non-editors ──
-		add_action( 'wp_enqueue_scripts', array( $this, 'enqueue_unlock_app' ) );
+		add_action( 'wp_enqueue_scripts', CrawlerToll_Guard::wrap( array( $this, 'enqueue_unlock_app' ), 'gate.enqueue', CrawlerToll_Guard::FALLBACK_VOID ) );
 
 		// ── invalidate the seal cache when a premium post is edited ──
 		add_action( 'save_post', array( $this, 'bust_seal_cache' ), 10, 1 );
+	}
+
+	/**
+	 * W4: if the REST gate throws, strip rendered content + excerpt from the
+	 * response rather than passing the raw post through (fail closed).
+	 *
+	 * @param mixed $response
+	 * @return mixed
+	 */
+	private function rest_fallback( $response ) {
+		if ( is_object( $response ) && isset( $response->data ) && is_array( $response->data ) ) {
+			foreach ( array( 'content', 'excerpt' ) as $k ) {
+				if ( isset( $response->data[ $k ] ) && is_array( $response->data[ $k ] ) ) {
+					$response->data[ $k ]['rendered'] = '';
+				}
+			}
+		}
+		return $response;
 	}
 
 	// ─── data-layer neutralization ────────────────────────────────────

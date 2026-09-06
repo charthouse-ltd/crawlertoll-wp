@@ -91,6 +91,8 @@ require_once CRAWLERTOLL_PLUGIN_DIR . 'includes/class-crawlertoll-cut.php';
 require_once CRAWLERTOLL_PLUGIN_DIR . 'includes/class-crawlertoll-sealed.php';
 require_once CRAWLERTOLL_PLUGIN_DIR . 'includes/class-crawlertoll-registry.php';
 require_once CRAWLERTOLL_PLUGIN_DIR . 'includes/class-crawlertoll-stripe.php';
+// Error guard (W4): never white-screen a site; enforcement degrades open, sealing stays closed.
+require_once CRAWLERTOLL_PLUGIN_DIR . 'includes/class-crawlertoll-guard.php';
 require_once CRAWLERTOLL_PLUGIN_DIR . 'includes/class-crawlertoll-meter.php';
 require_once CRAWLERTOLL_PLUGIN_DIR . 'includes/class-crawlertoll-tiers.php';
 // Publisher-editable wall copy (access-tiers spec §5.4, A3) — free-safe.
@@ -124,6 +126,7 @@ require_once CRAWLERTOLL_PLUGIN_DIR . 'admin/class-crawlertoll-pro-admin.php';
  * Boot the plugin once WordPress has loaded.
  */
 function crawlertoll_bootstrap() {
+	CrawlerToll_Guard::register_shutdown_handler();
 	$plugin = new CrawlerToll_Plugin();
 	$plugin->register();
 
