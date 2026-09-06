@@ -265,8 +265,8 @@ function crawlertoll_default_settings() {
  */
 function crawlertoll_rail_options() {
 	return array(
-		'x402'       => 'x402 — crypto stablecoin (Coinbase protocol)',
-		'stripe-acp' => 'Stripe — cards, Apple Pay, Google Pay',
+		'x402'       => 'USDC over x402 — wallets and AI agents, paid to your wallet',
+		'stripe-acp' => 'Cards, Apple Pay, Google Pay — on your own Stripe account',
 		'custom'     => 'Custom payment URL',
 	);
 }
