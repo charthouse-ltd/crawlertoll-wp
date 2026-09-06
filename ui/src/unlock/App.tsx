@@ -96,12 +96,47 @@ function passListDrop(passId: string): void {
   }
 }
 
+
+// ─── Sealed design helpers (redesign 2026-09-06) ─────────────────────
+const SEAL_GLYPH = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <rect x="5" y="10" width="14" height="10" rx="2.5" />
+    <path d="M8.5 10V7.5a3.5 3.5 0 0 1 7 0V10" />
+  </svg>
+);
+function railGlyph(rail: string) {
+  if (rail === "x402") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="8" />
+        <path d="M9.5 9.5h4a1.75 1.75 0 0 1 0 3.5h-3a1.75 1.75 0 0 0 0 3.5h4M12 7v2.5M12 14.5V17" />
+      </svg>
+    );
+  }
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+      <rect x="3" y="6" width="18" height="12" rx="2.5" />
+      <path d="M3 10h18M7 14.5h4" />
+    </svg>
+  );
+}
+/** "24-hour access — pay by card" → { title: "24-hour access", meta: "pay by card" } */
+function splitTileLabel(label: string): { title: string; meta: string } {
+  const i = label.lastIndexOf(" — ");
+  if (i < 0) return { title: label, meta: "" };
+  return { title: label.slice(0, i), meta: label.slice(i + 3) };
+}
+function durationShort(hours: number): string {
+  if (hours % 24 === 0) return `${hours / 24} day${hours === 24 ? "" : "s"}`;
+  return `${hours} h`;
+}
+
 const card: CSSProperties = {
   border: "1px solid var(--ct-border)",
-  background: "var(--ct-surface)",
+  background: "var(--ct-bg)",
   borderRadius: 14,
-  padding: 20,
-  marginTop: 16,
+  padding: 16,
+  marginTop: 12,
 };
 
 // Price for the idle card (fresh-eyes audit 2026-08-25): a reader should never
@@ -702,7 +737,7 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
                   <div style={{ marginTop: 6 }}>Code for this article on {window.location.hostname}</div>
                 </div>
               </div>
-              <button type="button" onClick={() => setTransfer(null)} style={{ ...btn, marginTop: 12 }}>
+              <button type="button" onClick={() => setTransfer(null)} className="ct-btn">
                 Done
               </button>
             </div>
@@ -713,7 +748,7 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
                 type="button"
                 onClick={startTransfer}
                 disabled={transferBusy}
-                style={{ background: "none", border: "none", padding: 0, color: "var(--ct-muted)", textDecoration: "underline", cursor: "pointer", fontSize: 12 }}
+                className="ct-link"
               >
                 {transferBusy ? "Creating a code…" : "Read it on another device"}
               </button>
@@ -726,19 +761,22 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
   }
 
   const footer = (
-    <p style={{ marginTop: 12, fontSize: 11, color: "var(--ct-muted)" }}>
-      Powered by CrawlerToll · you pay the publisher directly
+    <p className="ct-wall__foot">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1.5" /><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" /></svg>
+      <span>Encrypted on this page · you pay the publisher directly · Powered by CrawlerToll</span>
     </p>
   );
 
   return (
-    <div className="ct-pro" style={card}>
+    <div className="ct-pro ct-wall">
       {state === "unavailable" ? (
-        <p style={{ fontSize: 14, color: "var(--ct-muted)" }}>The rest of this content is currently unavailable to unlock.</p>
+        <div className="ct-wall__state">
+          <div className="ct-wall__head"><span className="ct-wall__seal" aria-hidden="true">{SEAL_GLYPH}</span><div><h3 className="ct-wall__title">Sealed for now</h3><p className="ct-wall__lede">The rest of this content is currently unavailable to unlock. Nothing has been charged.</p></div></div>
+        </div>
       ) : state === "error" ? (
         <>
-          <p style={{ fontSize: 14, fontWeight: 600 }}>{error}</p>
-          <button type="button" onClick={() => setState("menu")} style={btn}>
+          <p className="ct-wall__error">{error}</p>
+          <button type="button" onClick={() => setState("menu")} className="ct-btn">
             Try again
           </button>
         </>
@@ -749,18 +787,23 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
           ) : null}
           {offer?.meter && offer.meter.remaining > 0 ? (
           <>
-            <p style={{ fontSize: 15, fontWeight: 600 }}>{wallHeading}</p>
+            <div className="ct-wall__head">
+              <span className="ct-wall__seal" aria-hidden="true">{SEAL_GLYPH}</span>
+              <div>
+                <h3 className="ct-wall__title">{wallHeading}</h3>
+              </div>
+            </div>
             <p style={{ fontSize: 13, color: "var(--ct-muted)", margin: "4px 0 12px" }}>
               {offer.meter.remaining} of {offer.meter.count} free articles left in this {offer.meter.window_days}-day window.
             </p>
-            <button type="button" onClick={readFree} style={btn}>
+            <button type="button" onClick={readFree} className="ct-btn">
               Read free now
             </button>
             <p style={{ marginTop: 10, fontSize: 12 }}>
               <button
                 type="button"
                 onClick={() => loadMenu()}
-                style={{ background: "none", border: "none", padding: 0, color: "var(--ct-muted)", textDecoration: "underline", cursor: "pointer", fontSize: 12 }}
+                className="ct-link"
               >
                 {(() => {
                   // With access tiers the honest number is the cheapest tier, not the per-crawl price.
@@ -778,7 +821,12 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
           </>
         ) : (
           <>
-            <p style={{ fontSize: 15, fontWeight: 600 }}>{wallHeading}</p>
+            <div className="ct-wall__head">
+              <span className="ct-wall__seal" aria-hidden="true">{SEAL_GLYPH}</span>
+              <div>
+                <h3 className="ct-wall__title">{wallHeading}</h3>
+              </div>
+            </div>
             <p style={{ fontSize: 13, color: "var(--ct-muted)", margin: "4px 0 12px" }}>
               {wallValue ||
                 (idlePrice
@@ -791,7 +839,7 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
                   `You've read your ${offer.meter.count} free article${offer.meter.count === 1 ? "" : "s"} for this ${offer.meter.window_days}-day window.`}
               </p>
             ) : null}
-            <button type="button" onClick={() => loadMenu()} style={btn}>
+            <button type="button" onClick={() => loadMenu()} className="ct-btn">
               {idlePrice ? `Unlock for ${idlePrice}` : "Unlock"}
             </button>
             {footer}
@@ -800,7 +848,7 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
         </>
       ) : state === "loading" || state === "processing" ? (
         <>
-          <p style={{ fontSize: 14, color: "var(--ct-muted)" }}>
+          <p className="ct-wall__wait">
             {state === "processing" ? (renewing ? "Restoring your access…" : "Confirming payment…") : "Loading…"}
           </p>
           {state === "processing" && walletHint ? (
@@ -816,14 +864,14 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
             <p style={{ fontSize: 12, color: "var(--ct-muted)", textAlign: "center", margin: "8px 0" }}>or pay with card</p>
           ) : null}
           <div ref={stripeNode} style={{ minHeight: 40 }} />
-          <button type="button" onClick={confirmStripe} style={btn}>
+          <button type="button" onClick={confirmStripe} className="ct-btn">
             Pay &amp; unlock
           </button>
           <p style={{ marginTop: 10, fontSize: 12 }}>
             <button
               type="button"
               onClick={() => setState("menu")}
-              style={{ background: "none", border: "none", padding: 0, color: "var(--ct-muted)", textDecoration: "underline", cursor: "pointer", fontSize: 12 }}
+              className="ct-link"
             >
               back to all unlock options
             </button>
@@ -878,14 +926,14 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
           {emailError ? (
             <p style={{ fontSize: 13, fontWeight: 600, color: "#b91c1c", margin: "0 0 10px" }}>{emailError}</p>
           ) : null}
-          <button type="button" onClick={submitEmail} disabled={emailBusy} style={{ ...btn, opacity: emailBusy ? 0.6 : 1 }}>
+          <button type="button" onClick={submitEmail} disabled={emailBusy} className="ct-btn">
             {emailBusy ? "Sending…" : "Send my access link"}
           </button>
           <p style={{ marginTop: 10, fontSize: 12 }}>
             <button
               type="button"
               onClick={() => setState("menu")}
-              style={{ background: "none", border: "none", padding: 0, color: "var(--ct-muted)", textDecoration: "underline", cursor: "pointer", fontSize: 12 }}
+              className="ct-link"
             >
               back to all unlock options
             </button>
@@ -904,7 +952,7 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
             <button
               type="button"
               onClick={() => setState("email")}
-              style={{ background: "none", border: "none", padding: 0, color: "var(--ct-muted)", textDecoration: "underline", cursor: "pointer", fontSize: 12 }}
+              className="ct-link"
             >
               send it again
             </button>
@@ -917,14 +965,18 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
           {renewNote ? (
             <p style={{ fontSize: 13, fontWeight: 600, color: "var(--ct-text)", margin: "0 0 8px" }}>{renewNote}</p>
           ) : null}
-          <p style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>Choose how to unlock</p>
-          <div style={{ display: "grid", gap: 8 }}>
+          <div className="ct-wall__head"><span className="ct-wall__seal" aria-hidden="true">{SEAL_GLYPH}</span><div><h3 className="ct-wall__title">Choose how to unlock</h3><p className="ct-wall__lede">One payment, straight to the publisher. Your access stays on this device.</p></div></div>
+          <div className="ct-tiles">
             {offer?.meter && offer.meter.remaining > 0 ? (
-              <button type="button" onClick={readFree} style={{ ...tileBtn, border: "1px solid var(--ct-accent)" }}>
-                <span style={{ fontWeight: 600 }}>Read free now</span>
-                <span style={{ color: "var(--ct-muted)" }}>
-                  uses 1 free read — {offer.meter.remaining - 1} of {offer.meter.count} left after this one
+              <button type="button" onClick={readFree} className="ct-tile" style={{ borderColor: "var(--ct-success)" }}>
+                <span className="ct-tile__glyph" data-rail="free" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 12v8H4v-8M2 7h20v5H2zM12 22V7M12 7c-2.5 0-4-1.2-4-2.6C8 3 9.3 2 10.5 2 12 2 12 4 12 7zM12 7c2.5 0 4-1.2 4-2.6C16 3 14.7 2 13.5 2 12 2 12 4 12 7z" /></svg>
                 </span>
+                <span>
+                  <span className="ct-tile__label" style={{ display: "block" }}>Read free now</span>
+                  <span className="ct-tile__meta" style={{ display: "block" }}>uses 1 free read — {offer.meter.remaining - 1} of {offer.meter.count} left after this one</span>
+                </span>
+                <span className="ct-tile__price" style={{ color: "var(--ct-success)" }}>Free</span>
               </button>
             ) : null}
             {offer?.email_gate === true && restBase ? (
@@ -934,10 +986,16 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
                   setEmailError("");
                   setState("email");
                 }}
-                style={tileBtn}
+                className="ct-tile"
               >
-                <span style={{ fontWeight: 600 }}>Read free with your email</span>
-                <span style={{ color: "var(--ct-muted)" }}>we email you a one-time access link</span>
+                <span className="ct-tile__glyph" data-rail="free" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.5" /><path d="m3 7 9 6 9-6" /></svg>
+                </span>
+                <span>
+                  <span className="ct-tile__label" style={{ display: "block" }}>Read free with your email</span>
+                  <span className="ct-tile__meta" style={{ display: "block" }}>we email you a one-time access link</span>
+                </span>
+                <span className="ct-tile__price" style={{ color: "var(--ct-success)" }}>Free</span>
               </button>
             ) : null}
             {offer?.meter && offer.meter.remaining <= 0 ? (
@@ -959,34 +1017,44 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
                     autoCapitalize="characters"
                     style={{ flex: 1, padding: "8px 10px", borderRadius: 10, border: "1px solid var(--ct-border)", background: "var(--ct-elevated)", color: "var(--ct-text)", fontSize: 15, fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", letterSpacing: "0.08em" }}
                   />
-                  <button type="button" onClick={() => void claimCode(codeInput)} disabled={codeBusy} style={{ ...btn, marginTop: 0 }}>
+                  <button type="button" onClick={() => void claimCode(codeInput)} disabled={codeBusy} className="ct-btn" style={{ marginTop: 0, width: "auto" }}>
                     {codeBusy ? "Checking…" : "Unlock"}
                   </button>
                 </div>
                 {codeError ? <p style={{ fontSize: 12, color: "var(--ct-danger, #c0392b)", margin: "6px 0 0" }}>{codeError}</p> : null}
               </div>
             ) : null}
-            {tiles.map((t) => (
+            {tiles.map((t) => {
+              const parts = splitTileLabel(t.label);
+              return (
               <button
                 key={t.key}
                 type="button"
+                className="ct-tile"
                 disabled={!t.enabled}
                 onClick={() => pick(t)}
                 title={t.reason}
                 aria-label={t.enabled && t.priceLabel ? `${t.label} — ${t.priceLabel}` : `${t.label}${t.reason ? ` — ${t.reason}` : ""}`}
-                style={{ ...tileBtn, opacity: t.enabled ? 1 : 0.55, cursor: t.enabled ? "pointer" : "not-allowed" }}
               >
-                <span style={{ fontWeight: 600 }}>{t.label}</span>
-                <span style={{ color: "var(--ct-muted)" }}>{t.enabled ? t.priceLabel : t.reason}</span>
+                <span className="ct-tile__glyph" data-rail={t.rail === "x402" ? "x402" : t.rail} aria-hidden="true">{railGlyph(t.rail)}</span>
+                <span>
+                  <span className="ct-tile__label" style={{ display: "block" }}>{parts.title}</span>
+                  <span className="ct-tile__meta" style={{ display: "block" }}>{t.enabled ? parts.meta : t.reason}</span>
+                </span>
+                <span className="ct-tile__price">
+                  {t.enabled ? t.priceLabel : ""}
+                  {t.enabled && t.tier?.duration_hours ? <small>{durationShort(t.tier.duration_hours)}</small> : null}
+                </span>
               </button>
-            ))}
+              );
+            })}
           </div>
           {!codeEntry ? (
             <p style={{ marginTop: 8, fontSize: 12 }}>
               <button
                 type="button"
                 onClick={() => setCodeEntry(true)}
-                style={{ background: "none", border: "none", padding: 0, color: "var(--ct-muted)", textDecoration: "underline", cursor: "pointer", fontSize: 12 }}
+                className="ct-link"
               >
                 Already unlocked on another device? Enter your code
               </button>
@@ -999,26 +1067,4 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
   );
 }
 
-const btn: CSSProperties = {
-  marginTop: 4,
-  padding: "9px 18px",
-  borderRadius: 10,
-  border: "none",
-  background: "var(--ct-accent)",
-  color: "#fff",
-  fontSize: 14,
-  fontWeight: 600,
-  cursor: "pointer",
-};
 
-const tileBtn: CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  padding: "12px 14px",
-  borderRadius: 10,
-  border: "1px solid var(--ct-border)",
-  background: "var(--ct-elevated)",
-  color: "var(--ct-text)",
-  fontSize: 13,
-};

@@ -1,27 +1,52 @@
-/* CrawlerToll Admin Styles */
+/* CrawlerToll Admin Styles — "Sealed" system (redesign 2026-09-06).
+   Ink + paper, one wax-seal accent, brass secondary. Typeface stays wp-admin's
+   (a plugin should not fight its host); hierarchy comes from weight, tabular
+   numerals and small-caps labels. */
 
 :root {
-	--ct-primary: #6366f1;
-	--ct-primary-hover: #4f46e5;
-	--ct-success: #10b981;
-	--ct-warning: #f59e0b;
-	--ct-danger: #ef4444;
-	--ct-bg: #f8fafc;
+	--ct-primary: #c2381f;
+	--ct-primary-hover: #8e2613;
+	--ct-primary-soft: #fbeae5;
+	--ct-brass: #b98a2a;
+	--ct-brass-soft: #f5ecd4;
+	--ct-ink: #151a21;
+	--ct-success: #1f7a4d;
+	--ct-warning: #b45309;
+	--ct-danger: #b42318;
+	--ct-bg: #faf8f3;
 	--ct-card-bg: #ffffff;
-	--ct-border: #e2e8f0;
-	--ct-text: #1e293b;
-	--ct-text-muted: #64748b;
-	--ct-radius: 10px;
-	--ct-shadow: 0 1px 3px rgba(0,0,0,.06), 0 1px 2px rgba(0,0,0,.04);
+	--ct-border: #e7e2d8;
+	--ct-text: #151a21;
+	--ct-text-muted: #6f747c;
+	--ct-radius: 14px;
+	--ct-shadow: 0 1px 2px rgba(21,26,33,.05), 0 10px 30px -18px rgba(21,26,33,.22);
 }
 
-/* Dashboard header */
+/* Header band: ink, with the seal and a faint brass cast — not a gradient banner */
 .ct-header {
-	background: linear-gradient(135deg, var(--ct-primary), #8b5cf6);
+	position: relative;
+	background: var(--ct-ink);
+	background-image:
+		radial-gradient(700px 240px at 0% 0%, rgba(194,56,31,.28), transparent 60%),
+		radial-gradient(520px 200px at 100% 100%, rgba(185,138,42,.22), transparent 60%);
 	margin: 0 -20px 24px -20px;
-	padding: 32px 28px;
+	padding: 30px 28px 26px;
 	color: #fff;
 	border-radius: 0;
+	overflow: hidden;
+}
+.ct-header::after {
+	content: "";
+	position: absolute;
+	right: 28px;
+	top: 50%;
+	width: 64px;
+	height: 64px;
+	margin-top: -32px;
+	border-radius: 50%;
+	background: radial-gradient(circle at 35% 30%, #e05a3f, var(--ct-primary) 55%, var(--ct-primary-hover));
+	box-shadow: inset 0 0 0 4px rgba(255,255,255,.28), 0 12px 24px -10px rgba(142,38,19,.8);
+	opacity: .95;
 }
 
 .ct-header h1 {
@@ -43,15 +68,18 @@
 
 .ct-header .ct-badge {
 	display: inline-block;
-	background: rgba(255,255,255,.18);
+	background: rgba(255,255,255,.14);
+	border: 1px solid rgba(255,255,255,.22);
 	color: #fff;
 	padding: 3px 10px;
 	border-radius: 99px;
-	font-size: 12px;
-	font-weight: 600;
+	font-size: 11px;
+	font-weight: 700;
 	margin-left: 8px;
 	vertical-align: middle;
-	letter-spacing: 0.02em;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	font-variant-numeric: tabular-nums;
 }
 
 /* Status bar */
@@ -83,16 +111,18 @@
 	margin-bottom: 12px;
 }
 
-.ct-stat-card .ct-stat-icon.green  { background: #d1fae5; color: var(--ct-success); }
-.ct-stat-card .ct-stat-icon.purple { background: #ede9fe; color: var(--ct-primary); }
-.ct-stat-card .ct-stat-icon.amber  { background: #fef3c7; color: var(--ct-warning); }
-.ct-stat-card .ct-stat-icon.blue   { background: #dbeafe; color: #3b82f6; }
+.ct-stat-card .ct-stat-icon.green  { background: #e6f2ea; color: var(--ct-success); }
+.ct-stat-card .ct-stat-icon.purple { background: var(--ct-primary-soft); color: var(--ct-primary-hover); }
+.ct-stat-card .ct-stat-icon.amber  { background: var(--ct-brass-soft); color: #7a5a14; }
+.ct-stat-card .ct-stat-icon.blue   { background: #e9ecf1; color: var(--ct-ink); }
 
 .ct-stat-card .ct-stat-value {
-	font-size: 28px;
-	font-weight: 700;
+	font-size: 30px;
+	font-weight: 750;
 	color: var(--ct-text);
 	line-height: 1;
+	letter-spacing: -0.02em;
+	font-variant-numeric: tabular-nums;
 }
 
 .ct-stat-card .ct-stat-label {
@@ -110,9 +140,15 @@
 	border: 1px solid var(--ct-border);
 	border-radius: var(--ct-radius);
 	padding: 24px;
-	margin-bottom: 24px;
+	margin-bottom: 20px;
 	box-shadow: var(--ct-shadow);
+	animation: ct-rise .45s cubic-bezier(.2,.7,.2,1) both;
 }
+.ct-card:nth-of-type(2) { animation-delay: .04s; }
+.ct-card:nth-of-type(3) { animation-delay: .08s; }
+.ct-card:nth-of-type(4) { animation-delay: .12s; }
+@keyframes ct-rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .ct-card { animation: none; } }
 
 .ct-card h2 {
 	font-size: 16px;
@@ -170,7 +206,7 @@
 .ct-card input:focus,
 .ct-card select:focus {
 	border-color: var(--ct-primary);
-	box-shadow: 0 0 0 3px rgba(99,102,241,.15);
+	box-shadow: 0 0 0 3px var(--ct-primary-soft);
 	outline: none;
 }
 
@@ -183,7 +219,7 @@
 	line-height: 1.6;
 	width: 100%;
 	max-width: 700px;
-	background: #f8fafc;
+	background: var(--ct-bg);
 	transition: border-color .15s;
 }
 

@@ -16,18 +16,23 @@
    correct regardless of load order or OS theme. */
 .ct-root,
 .ct-pro {
-  --ct-bg: #ffffff;
-  --ct-surface: #f6f7f9;
+  --ct-bg: #faf8f3;
+  --ct-surface: #ffffff;
   --ct-elevated: #ffffff;
-  --ct-text: #18181b;
-  --ct-muted: #6b7280;
-  --ct-border: #e5e7eb;
-  --ct-accent: #2a78d6;
-  --ct-accent-2: #7c5cff;
-  --ct-success: #15a36e;
-  --ct-danger: #dc2626;
-  --ct-radius: 14px;
-  --ct-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 8px 24px -12px rgba(16, 24, 40, 0.12);
+  --ct-text: #151a21;
+  --ct-muted: #6f747c;
+  --ct-border: #e7e2d8;
+  /* "Sealed" system (redesign 2026-09-06): ink + paper, one wax-seal accent,
+     brass as the secondary. No purple, no generic blue. */
+  --ct-accent: #c2381f;
+  --ct-accent-deep: #8e2613;
+  --ct-accent-2: #b98a2a;
+  --ct-accent-soft: #fbeae5;
+  --ct-brass-soft: #f5ecd4;
+  --ct-success: #1f7a4d;
+  --ct-danger: #b42318;
+  --ct-radius: 16px;
+  --ct-shadow: 0 1px 2px rgba(21, 26, 33, 0.05), 0 10px 30px -14px rgba(21, 26, 33, 0.18);
 }
 
 /* Always light — a dark-mode OS previously flipped these tokens while the
@@ -98,4 +103,207 @@
 .ct-bar-fill {
   transform-origin: left center;
   animation: ct-grow 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+
+/* ── The wall (point of sale) ──────────────────────────────────────────────
+   Scoped under .ct-wall (the unlock app root). Typeface is INHERITED from the
+   publisher's theme on purpose — the wall is part of their article, not a
+   foreign widget — the hierarchy comes from weight, size and tabular numerals.
+   Colours come from the Sealed tokens above. Everything animates once, gently. */
+.ct-wall {
+  position: relative;
+  color: var(--ct-text);
+  background: var(--ct-surface);
+  border: 1px solid var(--ct-border);
+  border-radius: var(--ct-radius);
+  padding: 22px 22px 18px;
+  margin-top: 18px;
+  box-shadow: var(--ct-shadow);
+  overflow: hidden;
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+.ct-wall::before {
+  /* paper grain + a warm cast that reads as "sealed", not "modal" */
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(900px 260px at 0% -10%, rgba(194, 56, 31, 0.07), transparent 60%),
+    radial-gradient(600px 220px at 100% 110%, rgba(185, 138, 42, 0.10), transparent 60%);
+}
+.ct-wall > * { position: relative; }
+.ct-wall :where(h3, p) { margin: 0; }
+
+.ct-wall__head {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  margin-bottom: 14px;
+  animation: ct-rise 0.5s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.ct-wall__seal {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #e05a3f, var(--ct-accent) 55%, var(--ct-accent-deep));
+  box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.35), 0 6px 14px -6px rgba(142, 38, 19, 0.6);
+  display: grid;
+  place-items: center;
+  color: #fff;
+}
+.ct-wall__seal svg { width: 18px; height: 18px; }
+.ct-wall__title {
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.012em;
+  line-height: 1.2;
+}
+.ct-wall__lede {
+  margin-top: 4px;
+  font-size: 14px;
+  color: var(--ct-muted);
+}
+
+/* primary action */
+.ct-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 12px 16px;
+  margin-top: 10px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  background: var(--ct-text);
+  color: #fff;
+  font-weight: 650;
+  font-size: 15px;
+  letter-spacing: 0.005em;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+.ct-btn:hover { background: #0b0f14; transform: translateY(-1px); box-shadow: 0 10px 22px -12px rgba(21, 26, 33, 0.7); }
+.ct-btn:active { transform: translateY(0); }
+.ct-btn:focus-visible { outline: 3px solid var(--ct-accent-soft); outline-offset: 2px; border-color: var(--ct-accent); }
+.ct-btn[disabled] { opacity: 0.6; cursor: default; transform: none; box-shadow: none; }
+
+/* rail tiles — the menu of ways to get in */
+.ct-tiles { display: grid; gap: 8px; margin-top: 12px; }
+.ct-tile {
+  display: grid;
+  grid-template-columns: 38px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--ct-border);
+  background: var(--ct-bg);
+  color: var(--ct-text);
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+  animation: ct-rise 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.ct-tile:nth-child(2) { animation-delay: 0.05s; }
+.ct-tile:nth-child(3) { animation-delay: 0.1s; }
+.ct-tile:nth-child(4) { animation-delay: 0.15s; }
+.ct-tile:nth-child(5) { animation-delay: 0.2s; }
+.ct-tile:nth-child(n+6) { animation-delay: 0.25s; }
+.ct-tile:hover:not([disabled]) { border-color: var(--ct-accent); background: #fff; transform: translateY(-1px); box-shadow: 0 12px 26px -16px rgba(194, 56, 31, 0.45); }
+.ct-tile:focus-visible { outline: 3px solid var(--ct-accent-soft); outline-offset: 2px; border-color: var(--ct-accent); }
+.ct-tile[disabled] { opacity: 0.55; cursor: not-allowed; }
+.ct-tile__glyph {
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  display: grid;
+  place-items: center;
+  background: var(--ct-accent-soft);
+  color: var(--ct-accent-deep);
+}
+.ct-tile__glyph[data-rail="x402"] { background: var(--ct-brass-soft); color: #7a5a14; }
+.ct-tile__glyph[data-rail="free"] { background: #e6f2ea; color: var(--ct-success); }
+.ct-tile__glyph svg { width: 18px; height: 18px; }
+.ct-tile__label { font-weight: 650; font-size: 15px; line-height: 1.25; }
+.ct-tile__meta { font-size: 12.5px; color: var(--ct-muted); margin-top: 2px; }
+.ct-tile__price {
+  font-variant-numeric: tabular-nums;
+  font-weight: 750;
+  font-size: 18px;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+.ct-tile__price small { display: block; font-size: 11px; font-weight: 600; color: var(--ct-muted); text-align: right; letter-spacing: 0.04em; text-transform: uppercase; }
+
+/* inline "link" buttons */
+.ct-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--ct-muted);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12.5px;
+}
+.ct-link:hover { color: var(--ct-text); }
+
+/* fields */
+.ct-wall input[type="email"], .ct-wall input[type="text"] {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 11px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--ct-border);
+  background: var(--ct-bg);
+  color: var(--ct-text);
+  font: inherit;
+  font-size: 15px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.ct-wall input:focus-visible { outline: none; border-color: var(--ct-accent); box-shadow: 0 0 0 3px var(--ct-accent-soft); }
+
+/* footer line */
+.ct-wall__foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--ct-border);
+  font-size: 11.5px;
+  color: var(--ct-muted);
+  letter-spacing: 0.01em;
+}
+.ct-wall__foot svg { width: 12px; height: 12px; flex: none; }
+
+/* states */
+.ct-wall__state { animation: ct-rise 0.4s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+.ct-wall__note { font-size: 13px; color: var(--ct-muted); }
+.ct-wall__error { font-size: 14px; font-weight: 600; color: var(--ct-danger); }
+.ct-wall__wait { display: flex; align-items: center; gap: 10px; color: var(--ct-muted); font-size: 14px; }
+.ct-wall__wait::before {
+  content: "";
+  width: 14px; height: 14px; border-radius: 50%;
+  border: 2px solid var(--ct-border); border-top-color: var(--ct-accent);
+  animation: ct-spin 0.8s linear infinite;
+}
+
+/* the reveal: the seal breaks, the text comes into focus */
+.ct-unlocked { animation: ct-unseal 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+.ct-transfer { animation: ct-rise 0.5s 0.3s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+
+@keyframes ct-rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes ct-unseal { from { opacity: 0; filter: blur(6px); transform: translateY(4px); } to { opacity: 1; filter: blur(0); transform: none; } }
+@keyframes ct-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .ct-wall *, .ct-unlocked, .ct-transfer { animation: none !important; transition: none !important; }
 }
