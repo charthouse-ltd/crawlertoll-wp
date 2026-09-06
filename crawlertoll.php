@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       CrawlerToll
  * Plugin URI:        https://crawlertoll.com
- * Description:       AI-crawler enforcement for WordPress. Detects AI crawlers (GPTBot, ClaudeBot, PerplexityBot, Google-Extended, +25 more), applies RSL 1.0 policy, and seals premium content behind HTTP 402 micropayments — settled on x402 (crypto) or Stripe (cards, Apple Pay, Google Pay), paid directly to the publisher.
+ * Description:       The paywall where the content itself is the lock. Recognises 30 declared AI-crawler user-agents (GPTBot, ClaudeBot, PerplexityBot, Google-Extended and more), applies RSL 1.0 policy, and seals premium content behind HTTP 402 — unlocked by card on your own Stripe account or in USDC (x402) to your own wallet. CrawlerToll never touches the money.
  * Version:           2.0.0
  * Requires at least: 6.0
  * Requires PHP:      7.4
