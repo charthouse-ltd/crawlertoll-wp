@@ -225,6 +225,55 @@ class CrawlerToll_Registry {
 	}
 
 	/**
+	 * Publisher-attested paid release (spec 2026-09-06): after THIS site verified
+	 * a card payment on its own Stripe account, ask the registry to release the
+	 * CEK for its own content. Bearer write-auth; the registry enforces
+	 * ownership + receipt single-use and runs the same release tail as x402.
+	 *
+	 * @param string $content_id
+	 * @param string $receipt_id  Stripe PaymentIntent id (server-confirmed).
+	 * @param string $tier_id     '' for the legacy single price.
+	 * @param string $device      Reader device binding (opaque, optional).
+	 * @param string $currency    Upper-case ISO code actually charged.
+	 * @return array{cek:string,capability:array,pass?:array}|WP_Error
+	 */
+	public function grant_release( $content_id, $receipt_id, $tier_id = '', $device = '', $currency = 'USD' ) {
+		$body = array(
+			'publisher'  => wp_parse_url( home_url(), PHP_URL_HOST ),
+			'rail'       => 'stripe',
+			'receipt_id' => (string) $receipt_id,
+			'currency'   => strtoupper( (string) $currency ),
+		);
+		if ( '' !== (string) $tier_id ) {
+			$body['tier_id'] = (string) $tier_id;
+		}
+		if ( '' !== (string) $device ) {
+			$body['device'] = (string) $device;
+		}
+		$response = wp_remote_post(
+			self::base_url() . '/v1/sealed/' . $content_id . '/grant',
+			array(
+				'body'    => wp_json_encode( $body ),
+				'headers' => array(
+					'Content-Type'  => 'application/json',
+					'Authorization' => 'Bearer ' . $this->get_registry_key(),
+				),
+				'timeout' => 15,
+			)
+		);
+		if ( is_wp_error( $response ) ) {
+			return new WP_Error( 'registry_unreachable', 'Could not reach the unlock server.', array( 'status' => 502 ) );
+		}
+		$code = (int) wp_remote_retrieve_response_code( $response );
+		$data = json_decode( wp_remote_retrieve_body( $response ), true );
+		if ( 200 !== $code || ! is_array( $data ) || empty( $data['cek'] ) ) {
+			$err = is_array( $data ) && ! empty( $data['error'] ) ? (string) $data['error'] : 'registry_error';
+			return new WP_Error( $err, 'The unlock server did not release the key.', array( 'status' => $code >= 400 && $code < 600 ? $code : 502 ) );
+		}
+		return $data;
+	}
+
+	/**
 	 * Recent unlock receipts for this site (lineup freeze D3, free tier).
 	 *
 	 * Read back from the registry's store — no local DB. Answers the publisher's

@@ -140,7 +140,7 @@ if [ -e "$FREE/ui/src/unlock" ]; then echo "  ok: free build carries ui/src/unlo
 if grep -rqE 'CrawlerToll_(DB|Pricing|Alerts|Logger|Provenance|CatalogueUpdater)' "$FREE/ui/src/unlock" 2>/dev/null; then echo "  FAIL: unlock source references a Pro-only class"; bad=1; else echo "  ok: ui/src/unlock is free-safe"; fi
 
 echo "== verify the sealing engine ships in BOTH artifacts + stays free-safe (WS3) =="
-for f in includes/class-crawlertoll-sealed.php includes/class-crawlertoll-sealed-gate.php includes/class-crawlertoll-registry.php includes/class-crawlertoll-cut.php includes/class-crawlertoll-premium-gate.php; do
+for f in includes/class-crawlertoll-sealed.php includes/class-crawlertoll-sealed-gate.php includes/class-crawlertoll-registry.php includes/class-crawlertoll-stripe.php includes/class-crawlertoll-cut.php includes/class-crawlertoll-premium-gate.php; do
 	if [ -e "$FREE/$f" ]; then echo "  ok: free has $f"; else echo "  FAIL: free MISSING $f"; bad=1; fi
 	if [ -e "$PREM/$f" ]; then echo "  ok: premium has $f"; else echo "  FAIL: premium MISSING $f"; bad=1; fi
 	# Free-safe: the sealing engine must not depend on Pro-only classes (stripped from free).

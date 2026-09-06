@@ -1,8 +1,10 @@
 // Unlock app REST seam + per-rail proof acquisition. The registry key-release
-// (registry/src/sealed.js POST /v1/sealed/:id/key) converges three inputs on one
-// response: no proof → 402 {offer}; x402 X-PAYMENT → {cek}; Stripe {pass_id,
-// intent_id} → {cek}. We NEVER touch content money — the buyer pays the publisher
-// on the publisher's own account/wallet; we only read {cek}.
+// (registry/src/sealed.js POST /v1/sealed/:id/key) converges: no proof → 402
+// {offer}; x402 PAYMENT-SIGNATURE → {cek}; meter/email grants → {cek}. Card
+// payments never touch the registry from the browser: the SITE's own REST
+// (stripe/intent + stripe/confirm) charges the publisher's OWN Stripe account
+// and relays the registry's publisher-attested release. We NEVER touch content
+// money — the buyer pays the publisher on the publisher's own account/wallet.
 
 import type { SignedOffer } from "./offer";
 
@@ -32,9 +34,6 @@ export const hasStripeKey = (): boolean => unlockConfig.stripePublishableKey.len
 // do NOT url-encode the whole id into one segment.
 function keyUrl(contentId: string): string {
   return `${unlockConfig.registryBase.replace(/\/$/, "")}/v1/sealed/${contentId}/key`;
-}
-function intentUrl(contentId: string): string {
-  return `${unlockConfig.registryBase.replace(/\/$/, "")}/v1/sealed/${contentId}/intent`;
 }
 
 export class UnlockError extends Error {
@@ -268,25 +267,54 @@ async function postKey(contentId: string, body: Record<string, unknown>, headers
   throw new UnlockError("Unlock failed.", `key_${res.status}`);
 }
 
-/** Stripe: create a PaymentIntent on the publisher's connected account. */
-export async function createStripeIntent(contentId: string, passId: string): Promise<{ client_secret: string; intent_id: string }> {
-  const res = await safeFetch(intentUrl(contentId), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ pass_id: passId }),
-  });
-  if (res.status === 409) {
-    throw new UnlockError("Card payments aren't set up for this site yet.", "publisher_not_connected");
-  }
-  if (res.status !== 200) {
-    throw new UnlockError("Could not start the card payment.", `intent_${res.status}`);
-  }
-  return (await res.json()) as { client_secret: string; intent_id: string };
+// ─── Card rail — publisher-owned Stripe (spec 2026-09-06) ────────────
+// Both steps hit the SITE's REST (data-rest-url on the mount), never the
+// registry: the origin creates the PaymentIntent on the publisher's own Stripe
+// account, verifies it after confirmation, and asks the registry for the key
+// with a publisher-attested grant. Amounts are server-derived from the same
+// tiers the signed offer carries; we only echo the tier_id.
+
+async function readError(res: Response, fallback: string): Promise<UnlockError> {
+  const body = (await res.json().catch(() => ({}))) as { code?: string; message?: string };
+  const code = typeof body.code === "string" ? body.code : `card_${res.status}`;
+  const message = typeof body.message === "string" && body.message ? body.message : fallback;
+  return new UnlockError(message, code);
 }
 
-/** Stripe: after the Payment Element confirms, redeem the key. */
-export function redeemStripe(contentId: string, passId: string, intentId: string): Promise<KeyResponse> {
-  return postKey(contentId, { rail: "stripe", pass_id: passId, intent_id: intentId });
+/** Start a card payment: returns the Payment Element client secret + intent id. */
+export async function createStripeIntent(restBase: string, contentId: string, tierId: string): Promise<{ client_secret: string; intent_id: string }> {
+  const res = await safeFetch(`${restBase.replace(/\/$/, "")}/stripe/intent`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(tierId ? { content_id: contentId, tier_id: tierId } : { content_id: contentId }),
+  });
+  if (res.status === 200) {
+    return (await res.json()) as { client_secret: string; intent_id: string };
+  }
+  if (res.status === 409) {
+    throw new UnlockError("Card payments aren't set up for this site yet.", "card_not_configured");
+  }
+  throw await readError(res, "Could not start the card payment.");
+}
+
+/** After the Payment Element confirmed: the site verifies the intent on the
+ *  publisher's account and relays the registry's key release. */
+export async function confirmStripe(restBase: string, contentId: string, intentId: string, tierId: string): Promise<KeyResponse> {
+  const res = await safeFetch(`${restBase.replace(/\/$/, "")}/stripe/confirm`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(tierId ? { content_id: contentId, intent_id: intentId, tier_id: tierId } : { content_id: contentId, intent_id: intentId }),
+  });
+  if (res.status === 200) {
+    return (await res.json()) as KeyResponse;
+  }
+  if (res.status === 409) {
+    throw new UnlockError("This payment was already used. Reload if you've already unlocked.", "receipt_already_redeemed");
+  }
+  if (res.status === 402) {
+    throw new UnlockError("Payment could not be verified yet.", "unsettled");
+  }
+  throw await readError(res, "Unlock failed after payment. Your card was charged — contact the site with your receipt.");
 }
 
 /** x402: redeem with the payment header built from a wallet signature.

@@ -167,6 +167,51 @@ $site_url = home_url();
 			</tr>
 			<tr>
 				<th scope="row">
+					<label for="crawlertoll-stripe-pk"><?php esc_html_e( 'Stripe publishable key', 'crawlertoll' ); ?></label>
+				</th>
+				<td>
+					<input
+						id="crawlertoll-stripe-pk"
+						type="text"
+						class="regular-text code"
+						placeholder="pk_live_…"
+						autocomplete="off"
+						name="<?php echo esc_attr( CRAWLERTOLL_OPTION_KEY ); ?>[stripe_publishable_key]"
+						value="<?php echo esc_attr( isset( $settings['stripe_publishable_key'] ) ? (string) $settings['stripe_publishable_key'] : '' ); ?>"
+					/>
+					<p class="description">
+						<?php esc_html_e( 'Cards, Apple Pay and Google Pay are charged on YOUR Stripe account and paid out to you by Stripe. CrawlerToll never touches the money and takes no cut. Stripe Dashboard → Developers → API keys.', 'crawlertoll' ); ?>
+					</p>
+				</td>
+			</tr>
+			<tr>
+				<th scope="row">
+					<label for="crawlertoll-stripe-sk"><?php esc_html_e( 'Stripe secret key', 'crawlertoll' ); ?></label>
+				</th>
+				<td>
+					<?php $ct_sk_masked = CrawlerToll_Stripe::masked_secret( isset( $settings['stripe_secret_key'] ) ? (string) $settings['stripe_secret_key'] : '' ); ?>
+					<input
+						id="crawlertoll-stripe-sk"
+						type="password"
+						class="regular-text code"
+						placeholder="<?php echo esc_attr( '' !== $ct_sk_masked ? $ct_sk_masked : 'rk_live_…' ); ?>"
+						autocomplete="new-password"
+						name="<?php echo esc_attr( CRAWLERTOLL_OPTION_KEY ); ?>[stripe_secret_key]"
+						value=""
+					/>
+					<?php if ( '' !== $ct_sk_masked ) : ?>
+						<label style="margin-left:8px;">
+							<input type="checkbox" name="<?php echo esc_attr( CRAWLERTOLL_OPTION_KEY ); ?>[stripe_secret_key_clear]" value="1" />
+							<?php esc_html_e( 'Remove the stored key', 'crawlertoll' ); ?>
+						</label>
+					<?php endif; ?>
+					<p class="description">
+						<?php esc_html_e( 'Stored on this site only, never shown again. Use a restricted key (rk_…) with write access to PaymentIntents. Leave blank to keep the current key.', 'crawlertoll' ); ?>
+					</p>
+				</td>
+			</tr>
+			<tr>
+				<th scope="row">
 					<label for="crawlertoll-apple-pay"><?php esc_html_e( 'Apple Pay verification', 'crawlertoll' ); ?></label>
 				</th>
 				<td>

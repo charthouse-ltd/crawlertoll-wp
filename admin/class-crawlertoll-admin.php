@@ -207,6 +207,28 @@ class CrawlerToll_Admin {
 				add_settings_error( CRAWLERTOLL_OPTION_KEY, 'x402_pay_to_invalid', esc_html__( 'USDC payout address ignored: it must be a 0x… address (42 characters).', 'crawlertoll' ) );
 			}
 		}
+		// Publisher-owned Stripe (2026-09-06): the publisher's own keys, shape-checked.
+		// Publishable key: '' clears. Secret key is WRITE-ONLY — the form never
+		// re-renders it: empty input keeps the stored value, the clear checkbox
+		// removes it, anything else must be a well-formed sk_/rk_ key.
+		if ( isset( $input['stripe_publishable_key'] ) ) {
+			$pk = trim( (string) $input['stripe_publishable_key'] );
+			if ( '' === $pk || CrawlerToll_Stripe::valid_publishable_key( $pk ) ) {
+				$out['stripe_publishable_key'] = $pk;
+			} else {
+				add_settings_error( CRAWLERTOLL_OPTION_KEY, 'stripe_pk_invalid', esc_html__( 'Stripe publishable key ignored: it must start with pk_live_ or pk_test_.', 'crawlertoll' ) );
+			}
+		}
+		if ( ! empty( $input['stripe_secret_key_clear'] ) ) {
+			$out['stripe_secret_key'] = '';
+		} elseif ( isset( $input['stripe_secret_key'] ) && '' !== trim( (string) $input['stripe_secret_key'] ) ) {
+			$sk = trim( (string) $input['stripe_secret_key'] );
+			if ( CrawlerToll_Stripe::valid_secret_key( $sk ) ) {
+				$out['stripe_secret_key'] = $sk;
+			} else {
+				add_settings_error( CRAWLERTOLL_OPTION_KEY, 'stripe_sk_invalid', esc_html__( 'Stripe secret key ignored: it must start with sk_ or rk_ (a restricted key is recommended).', 'crawlertoll' ) );
+			}
+		}
 		$out['payment_url']         = isset( $input['payment_url'] ) ? esc_url_raw( trim( $input['payment_url'] ) ) : '';
 		// Apple Pay domain verification file contents (Stripe Dashboard → payment
 		// method domains). Served verbatim at /.well-known/apple-developer-

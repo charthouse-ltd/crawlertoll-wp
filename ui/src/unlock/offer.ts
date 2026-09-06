@@ -1,16 +1,9 @@
 // Derive the rail menu from the SIGNED 402 offer (the authoritative source — the
 // page's data-rail/price attrs are only loading-state hints). Pure + importable
 // so it's unit-testable without a DOM. Mirrors the registry's buildOffer shape
-// (registry/src/sealed.js): x402 carries payTo only when configured; each Stripe
-// pass carries id/label/priceCents/currency/scope.
-
-export interface OfferPass {
-  id: string;
-  label?: string;
-  priceCents?: number;
-  currency?: string;
-  scope?: string;
-}
+// (registry/src/sealed.js): x402 carries payTo only when configured. Card tiles
+// are NOT in the offer — they mirror the same signed tiers (publisher-owned
+// Stripe at the origin prices from the identical rule set, spec 2026-09-06).
 
 export interface X402Offer {
   payTo?: string | null;
@@ -32,7 +25,6 @@ export interface SignedOffer {
   content_id: string;
   publisher?: string;
   x402?: X402Offer | null;
-  passes?: OfferPass[];
   // Access tiers (A2, spec §3): price×duration offers, INSIDE the signed offer
   // (the signature covers the set — a tampered tier invalidates verification).
   // The client echoes tier_id at redemption; the registry re-derives price AND
@@ -68,9 +60,8 @@ export interface RailTile {
   label: string;
   enabled: boolean;
   reason?: string; // why disabled (shown to the reader)
-  passId?: string; // stripe pass to redeem
   priceLabel?: string;
-  // A2: the access tier this tile buys (x402). Absent = legacy single price.
+  // A2: the access tier this tile buys (x402 or card). Absent = legacy single price.
   tier?: { tier_id: string; price_micros: number; duration_hours: number | null };
 }
 
@@ -81,13 +72,9 @@ export interface UnlockEnv {
 
 const SYMBOLS: Record<string, string> = { USD: "$", USDC: "$", EUR: "€", GBP: "£" };
 
-function fmtCents(cents?: number, currency?: string): string {
-  if (typeof cents !== "number") {
-    return "";
-  }
-  const sym = SYMBOLS[(currency || "USD").toUpperCase()] ?? "";
-  return `${sym}${(cents / 100).toFixed(2)}`;
-}
+// Stripe's card floor: a price below it is agent-only (the origin refuses to
+// create an intent for it — mirrored here so the tile never appears).
+export const CARD_MIN_MICROS = 500000;
 
 function fmtMicros(micros?: number, currency?: string): string {
   if (typeof micros !== "number") {
@@ -119,16 +106,49 @@ function durationLabel(hours: number | null): string {
 export function offerToRails(offer: SignedOffer, env: UnlockEnv): RailTile[] {
   const tiles: RailTile[] = [];
 
-  for (const pass of offer.passes ?? []) {
-    tiles.push({
-      rail: "stripe",
-      key: `stripe:${pass.id}`,
-      label: pass.label || "Pay by card",
-      enabled: env.hasStripeKey,
-      reason: env.hasStripeKey ? undefined : "Card payments not configured for this site.",
-      passId: pass.id,
-      priceLabel: fmtCents(pass.priceCents, pass.currency),
-    });
+  // Card tiles (publisher-owned Stripe): one per article tier, one per bundle
+  // tier, or the single price when it clears the card floor. The origin
+  // re-derives the amount from the same tier_id server-side.
+  if (env.hasStripeKey) {
+    const cardCurrency = offer.x402?.currency || "USD";
+    const cardReason = undefined;
+    const tiers = Array.isArray(offer.tiers) ? offer.tiers : [];
+    if (tiers.length > 0) {
+      for (const tier of tiers) {
+        tiles.push({
+          rail: "stripe",
+          key: `stripe:${tier.tier_id}`,
+          label: `${durationLabel(tier.duration_hours)} — pay by card`,
+          enabled: tier.price_micros >= CARD_MIN_MICROS,
+          reason: tier.price_micros >= CARD_MIN_MICROS ? cardReason : "Too small for a card payment.",
+          priceLabel: fmtMicros(tier.price_micros, cardCurrency),
+          tier,
+        });
+      }
+    } else if (typeof offer.x402?.priceMicros === "number" && offer.x402.priceMicros >= CARD_MIN_MICROS) {
+      tiles.push({
+        rail: "stripe",
+        key: "stripe",
+        label: "Pay by card",
+        enabled: true,
+        priceLabel: fmtMicros(offer.x402.priceMicros, cardCurrency),
+      });
+    }
+    const bundle = offer.bundle;
+    if (bundle && typeof bundle.scope_path === "string" && Array.isArray(bundle.tiers)) {
+      const scopeLabel = bundle.scope_path === "/" ? "the whole site" : `all of ${bundle.scope_path}`;
+      for (const tier of bundle.tiers) {
+        tiles.push({
+          rail: "stripe",
+          key: `stripe:${tier.tier_id}`,
+          label: `Unlock ${scopeLabel} — ${durationLabel(tier.duration_hours)} — pay by card`,
+          enabled: tier.price_micros >= CARD_MIN_MICROS,
+          reason: tier.price_micros >= CARD_MIN_MICROS ? cardReason : "Too small for a card payment.",
+          priceLabel: fmtMicros(tier.price_micros, cardCurrency),
+          tier,
+        });
+      }
+    }
   }
 
   if (offer.x402 && offer.x402.payTo) {

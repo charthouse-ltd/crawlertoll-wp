@@ -55,6 +55,9 @@ echo "== 3/8 copy working-tree plugin =="
 mkdir -p "$WP_DIR/wp-content/plugins/crawlertoll"
 ( cd "$PLUGIN_DIR" && tar --exclude='./e2e' --exclude='./tests' --exclude='./.git' --exclude='./*.zip' -cf - . ) \
 	| ( cd "$WP_DIR/wp-content/plugins/crawlertoll" && tar -xf - ) || die "plugin copy failed"
+# HTTP stubs for the card rail e2e (Stripe + registry sealed endpoints) — dev rig only.
+mkdir -p "$WP_DIR/wp-content/mu-plugins"
+cp "$HERE/mu-ct-stubs.php" "$WP_DIR/wp-content/mu-plugins/ct-e2e-stubs.php"
 
 echo "== 4/8 wp-config (Pro unlocked) =="
 cat > "$WP_DIR/wp-config.php" <<'WPCONF'
@@ -119,6 +122,10 @@ php "$HERE/test-alerts.php" "$WP_DIR" || fail=$((fail+1))
 echo
 echo "== retention purge e2e (§2.2) =="
 php "$HERE/test-retention.php" "$WP_DIR" || fail=$((fail+1))
+
+echo
+echo "== publisher-owned Stripe card rail (intent → confirm → key over real WP REST) =="
+php "$HERE/test-stripe.php" "$WP_DIR" "$BASE" || fail=$((fail+1))
 
 echo
 echo "== React pro-app mount (revenue tab + REST seam + /stats live) =="

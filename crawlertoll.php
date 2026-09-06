@@ -90,6 +90,7 @@ require_once CRAWLERTOLL_PLUGIN_DIR . 'includes/class-crawlertoll-cut.php';
 // Premium-path sealing engine (WS3) — ships free; free-safe (no Pro-only deps).
 require_once CRAWLERTOLL_PLUGIN_DIR . 'includes/class-crawlertoll-sealed.php';
 require_once CRAWLERTOLL_PLUGIN_DIR . 'includes/class-crawlertoll-registry.php';
+require_once CRAWLERTOLL_PLUGIN_DIR . 'includes/class-crawlertoll-stripe.php';
 require_once CRAWLERTOLL_PLUGIN_DIR . 'includes/class-crawlertoll-meter.php';
 require_once CRAWLERTOLL_PLUGIN_DIR . 'includes/class-crawlertoll-tiers.php';
 // Publisher-editable wall copy (access-tiers spec §5.4, A3) — free-safe.
@@ -222,6 +223,10 @@ function crawlertoll_default_settings() {
 		'currency'             => 'USD',
 		'rail'                 => 'x402',
 		'x402_pay_to'          => '',
+		// Publisher-owned Stripe (2026-09-06): the publisher's OWN keys. The
+		// secret never leaves this site; CrawlerToll runs no Connect platform.
+		'stripe_publishable_key' => '',
+		'stripe_secret_key'    => '',
 		'apple_pay_domain_association' => '',
 		'payment_url'          => '',
 		'terms_url'            => '',

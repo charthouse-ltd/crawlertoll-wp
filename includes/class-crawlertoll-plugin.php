@@ -359,6 +359,30 @@ class CrawlerToll_Plugin {
 				'callback'            => array( $this, 'rest_email_verified' ),
 			)
 		);
+
+		// Publisher-owned Stripe card rail (free, spec 2026-09-06): PUBLIC
+		// reader-facing endpoints. The intent is created and verified on the
+		// PUBLISHER'S OWN Stripe account by this origin; the registry only
+		// releases the key on a publisher-attested grant. Amounts are always
+		// server-derived — never read from the request.
+		register_rest_route(
+			'crawlertoll/v1',
+			'/stripe/intent',
+			array(
+				'methods'             => 'POST',
+				'permission_callback' => '__return_true',
+				'callback'            => array( $this, 'rest_stripe_intent' ),
+			)
+		);
+		register_rest_route(
+			'crawlertoll/v1',
+			'/stripe/confirm',
+			array(
+				'methods'             => 'POST',
+				'permission_callback' => '__return_true',
+				'callback'            => array( $this, 'rest_stripe_confirm' ),
+			)
+		);
 	}
 
 	/**
@@ -691,6 +715,142 @@ class CrawlerToll_Plugin {
 		}
 		CrawlerToll_Subscribers::mark_verified( (string) $status['email_sha256'], isset( $status['verified_at'] ) ? (string) $status['verified_at'] : '' );
 		return rest_ensure_response( array( 'verified' => true ) );
+	}
+
+	/**
+	 * The card price for (post, tier_id) from THIS site's own rules — the same
+	 * source the registry was given at seal time, so what we charge equals what
+	 * the signed offer advertised. tier ids mirror the registry's assignment:
+	 * "t<i>" over the sanitized article tiers, "b<i>" over the bundle tiers,
+	 * '' = the legacy single price. Pure given resolved tier sets.
+	 *
+	 * @param array      $tiers   Sanitized article tiers or null.
+	 * @param array|null $bundle  {path, tiers} or null.
+	 * @param int        $single  Single price (micros).
+	 * @param string     $tier_id
+	 * @return int|null Micros, or null for an unknown tier id.
+	 */
+	public static function card_price_micros( $tiers, $bundle, $single, $tier_id ) {
+		$tier_id = (string) $tier_id;
+		if ( '' === $tier_id ) {
+			return (int) $single;
+		}
+		if ( ! preg_match( '/^([tb])(\d)$/', $tier_id, $m ) ) {
+			return null;
+		}
+		$rows = 'b' === $m[1]
+			? ( is_array( $bundle ) && isset( $bundle['tiers'] ) && is_array( $bundle['tiers'] ) ? $bundle['tiers'] : array() )
+			: ( is_array( $tiers ) ? $tiers : array() );
+		$i = (int) $m[2];
+		return isset( $rows[ $i ]['price_micros'] ) ? (int) $rows[ $i ]['price_micros'] : null;
+	}
+
+	/**
+	 * Resolve a reader-supplied content_id to a sealed premium post + its card
+	 * pricing context. Shared by intent + confirm so both bind identically.
+	 *
+	 * @param string $content_id
+	 * @param string $tier_id
+	 * @return array{post_id:int,cents:int,currency:string}|WP_Error
+	 */
+	private function card_context( $content_id, $tier_id ) {
+		$content_id = (string) $content_id;
+		$post_id    = self::post_id_from_content_id( $content_id );
+		if ( $post_id <= 0 || ! class_exists( 'CrawlerToll_Cut' ) || ! CrawlerToll_Cut::is_premium( $post_id ) ) {
+			return new WP_Error( 'unknown_content', 'This content is not set up for card unlock.', array( 'status' => 404 ) );
+		}
+		$host = wp_parse_url( home_url(), PHP_URL_HOST );
+		if ( CrawlerToll_Sealed_Gate::build_content_id( $host, $post_id ) !== $content_id ) {
+			return new WP_Error( 'unknown_content', 'This content is not set up for card unlock.', array( 'status' => 404 ) );
+		}
+		$settings = crawlertoll_get_settings();
+		$tiers    = CrawlerToll_Tiers::resolve_for_post( $post_id, $settings );
+		$bundle   = CrawlerToll_Tiers::resolve_bundle_for_post( $post_id, $settings );
+		$micros   = self::card_price_micros( $tiers, $bundle, (int) $settings['price_micros'], $tier_id );
+		if ( null === $micros ) {
+			return new WP_Error( 'unknown_tier', 'That access option is not available.', array( 'status' => 400 ) );
+		}
+		$amount = CrawlerToll_Stripe::card_amount( $micros, (string) $settings['currency'] );
+		if ( is_wp_error( $amount ) ) {
+			return $amount;
+		}
+		return array( 'post_id' => $post_id, 'cents' => $amount['cents'], 'currency' => $amount['currency'] );
+	}
+
+	/**
+	 * POST /crawlertoll/v1/stripe/intent — start a card payment on the
+	 * publisher's own Stripe account for one sealed item (+ optional tier).
+	 *
+	 * @param WP_REST_Request $request
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public function rest_stripe_intent( $request ) {
+		if ( ! CrawlerToll_Stripe::is_configured() ) {
+			return new WP_Error( 'card_not_configured', 'Card payments are not set up for this site.', array( 'status' => 409 ) );
+		}
+		$content_id = (string) $request->get_param( 'content_id' );
+		$tier_id    = (string) $request->get_param( 'tier_id' );
+		$ctx        = $this->card_context( $content_id, $tier_id );
+		if ( is_wp_error( $ctx ) ) {
+			return $ctx;
+		}
+		$intent = CrawlerToll_Stripe::create_intent( $ctx['cents'], $ctx['currency'], array(
+			'content_id' => $content_id,
+			'tier_id'    => $tier_id,
+			'site'       => (string) wp_parse_url( home_url(), PHP_URL_HOST ),
+		) );
+		if ( is_wp_error( $intent ) ) {
+			return $intent;
+		}
+		return rest_ensure_response( array(
+			'client_secret' => $intent['client_secret'],
+			'intent_id'     => $intent['id'],
+			'amount'        => $ctx['cents'],
+			'currency'      => $ctx['currency'],
+		) );
+	}
+
+	/**
+	 * POST /crawlertoll/v1/stripe/confirm — after the Payment Element confirmed,
+	 * verify the intent on the publisher's account (status, exact amount,
+	 * currency, metadata binding) and ask the registry for the key via a
+	 * publisher-attested grant. Relays {cek, capability, pass} to the reader.
+	 *
+	 * @param WP_REST_Request $request
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public function rest_stripe_confirm( $request ) {
+		if ( ! CrawlerToll_Stripe::is_configured() ) {
+			return new WP_Error( 'card_not_configured', 'Card payments are not set up for this site.', array( 'status' => 409 ) );
+		}
+		$content_id = (string) $request->get_param( 'content_id' );
+		$tier_id    = (string) $request->get_param( 'tier_id' );
+		$intent_id  = (string) $request->get_param( 'intent_id' );
+		$device     = substr( preg_replace( '/[^A-Za-z0-9+\/=_-]/', '', (string) $request->get_param( 'device' ) ), 0, 128 );
+		$ctx        = $this->card_context( $content_id, $tier_id );
+		if ( is_wp_error( $ctx ) ) {
+			return $ctx;
+		}
+		$pi = CrawlerToll_Stripe::retrieve_intent( $intent_id );
+		if ( is_wp_error( $pi ) ) {
+			return $pi;
+		}
+		$ok = CrawlerToll_Stripe::verify_intent( $pi, array(
+			'cents'      => $ctx['cents'],
+			'currency'   => $ctx['currency'],
+			'content_id' => $content_id,
+			'tier_id'    => $tier_id,
+		) );
+		if ( is_wp_error( $ok ) ) {
+			return $ok;
+		}
+		// Server-confirmed id (pi.id), never the request field — replay dedup at
+		// the registry keys off the canonical intent.
+		$release = ( new CrawlerToll_Registry() )->grant_release( $content_id, (string) $pi['id'], $tier_id, $device, $ctx['currency'] );
+		if ( is_wp_error( $release ) ) {
+			return $release;
+		}
+		return rest_ensure_response( $release );
 	}
 
 	/**

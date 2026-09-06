@@ -169,7 +169,8 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
   // with a one-line "access ended" note so the re-pay is understood as a
   // renewal, not a double charge. (A3 refines the full renew copy.)
   const [renewNote, setRenewNote] = useState("");
-  const [stripePass, setStripePass] = useState("");
+  // Card checkout: the tier id being bought ('' = single price); null = not in card flow.
+  const [stripeTier, setStripeTier] = useState<string | null>(null);
   const [expressUp, setExpressUp] = useState(false);
   // A5 (email gate): the form's field state lives here; emailMode/restBase ride
   // the mount (server-emitted). restBase empty = email gate can't run (the
@@ -483,8 +484,8 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
     if (!tile.enabled) {
       return;
     }
-    if (tile.rail === "stripe" && tile.passId) {
-      setStripePass(tile.passId);
+    if (tile.rail === "stripe") {
+      setStripeTier(tile.tier ? tile.tier.tier_id : "");
       setState("stripe");
     } else if (tile.rail === "x402" && offer) {
       setState("processing");
@@ -512,13 +513,14 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
   // The Express Checkout slot (one-tap Apple Pay / Google Pay / Link) mounts
   // above the card form; it collapses itself when no wallet is available.
   useEffect(() => {
-    if (state !== "stripe" || !stripeNode.current || !stripePass) {
+    if (state !== "stripe" || !stripeNode.current || stripeTier === null) {
       return;
     }
     let cancelled = false;
     startStripe(
+      restBase,
       contentId,
-      stripePass,
+      stripeTier,
       stripeNode.current,
       stripeExpressNode.current,
       async (res) => {
@@ -552,7 +554,7 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state, stripePass, contentId]);
+  }, [state, stripeTier, contentId]);
 
   const confirmStripe = async () => {
     if (!stripeConfirm.current) {

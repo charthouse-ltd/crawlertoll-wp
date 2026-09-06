@@ -48,7 +48,8 @@ $recent_unlocks_error    = null;
 $recent_unlocks_enrolled = false;
 
 ob_start();
-require __DIR__ . '/../includes/class-crawlertoll-wall-copy.php'; // A3 wall-copy defaults (settings view)
+require __DIR__ . '/../includes/class-crawlertoll-wall-copy.php';
+	require_once __DIR__ . '/../includes/class-crawlertoll-stripe.php'; // masked_secret() (settings view, 2026-09-06)
 include __DIR__ . '/../admin/views/settings.php';
 $body = ob_get_clean();
 

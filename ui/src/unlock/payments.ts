@@ -1,9 +1,10 @@
-// Per-rail payment-proof acquisition. These are the LIVE-CONFIG paths: Stripe
-// needs the operator's publishable key + a connected account; x402 needs a reader
-// wallet + the registry facilitator + the offer to carry the token's EIP-712
-// domain. No-MoR: the buyer pays the publisher directly; we only read {cek}.
+// Per-rail payment-proof acquisition. These are the LIVE-CONFIG paths: cards
+// need the PUBLISHER'S OWN Stripe keys in the site settings (the origin charges
+// their account and relays the registry's release); x402 needs a reader wallet +
+// a keyless facilitator + the offer to carry the token's EIP-712 domain. No-MoR:
+// the buyer pays the publisher directly; we only read {cek}.
 
-import { createStripeIntent, redeemStripe, redeemX402, unlockConfig, UnlockError } from "./api";
+import { confirmStripe, createStripeIntent, redeemX402, unlockConfig, UnlockError } from "./api";
 import type { SettlementPass } from "./api";
 import type { SignedOffer } from "./offer";
 
@@ -51,8 +52,10 @@ function loadStripeJs(): Promise<void> {
 }
 
 /**
- * Stripe: create the intent, mount the Payment Element into `mountNode`, and
- * return a confirm() the UI calls when the reader submits the card form.
+ * Stripe (publisher-owned): ask the SITE to create the intent on the publisher's
+ * account, mount the Payment Element into `mountNode`, and return a confirm()
+ * the UI calls when the reader submits the card form. `tierId` is '' for the
+ * legacy single price; the origin re-derives the amount from it.
  *
  * When `expressNode` is also given, an Express Checkout Element (Apple Pay /
  * Google Pay / Link — whatever the reader's device AND the publisher's Stripe
@@ -62,8 +65,9 @@ function loadStripeJs(): Promise<void> {
  * `onExpressError` so the UI can show them in context.
  */
 export async function startStripe(
+  restBase: string,
   contentId: string,
-  passId: string,
+  tierId: string,
   mountNode: HTMLElement,
   expressNode?: HTMLElement | null,
   onExpressPaid?: (res: PaidRelease) => void | Promise<void>,
@@ -77,7 +81,7 @@ export async function startStripe(
   if (!stripe) {
     throw new UnlockError("Card payments are unavailable.", "stripe_init");
   }
-  const { client_secret, intent_id } = await createStripeIntent(contentId, passId);
+  const { client_secret, intent_id } = await createStripeIntent(restBase, contentId, tierId);
   const elements = stripe.elements({ clientSecret: client_secret });
   elements.create("payment").mount(mountNode);
 
@@ -103,7 +107,7 @@ export async function startStripe(
           if (result.error) {
             throw new UnlockError(result.error.message || "Payment was declined.", "stripe_confirm");
           }
-          const res = await redeemStripe(contentId, passId, intent_id);
+          const res = await confirmStripe(restBase, contentId, intent_id, tierId);
           await onExpressPaid({ cek: res.cek, pass: res.pass });
         } catch (e) {
           // Tell the wallet sheet the attempt failed, then surface the reason.
@@ -120,7 +124,7 @@ export async function startStripe(
     if (result.error) {
       throw new UnlockError(result.error.message || "Card was declined.", "stripe_confirm");
     }
-    const res = await redeemStripe(contentId, passId, intent_id);
+    const res = await confirmStripe(restBase, contentId, intent_id, tierId);
     return { cek: res.cek, pass: res.pass };
   };
 }
