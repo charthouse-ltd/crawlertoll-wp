@@ -396,7 +396,7 @@ class CrawlerToll_Admin {
 		echo '<h1>' . esc_html__( 'CrawlerToll', 'crawlertoll' ) . ' <span class="ct-badge">v' . esc_html( CRAWLERTOLL_VERSION ) . '</span></h1>';
 		echo '</div>';
 
-		echo '<nav class="ct-tabs" style="margin-bottom:24px;border-bottom:2px solid #e2e8f0;display:flex;gap:0;">';
+		echo '<nav class="ct-tabs" style="margin-bottom:24px;border-bottom:2px solid var(--ct-border, #e7e2d8);display:flex;gap:0;">';
 		foreach ( $tabs as $tab_key => $tab_label ) {
 			$is_pro_tab = in_array( $tab_key, array( 'pricing', 'alerts', 'revenue', 'logs', 'rails', 'webhooks', 'readers' ), true );
 			$classes = 'ct-tab';
@@ -408,9 +408,9 @@ class CrawlerToll_Admin {
 			}
 			$url = add_query_arg( 'ct_tab', $tab_key, admin_url( 'options-general.php?page=crawlertoll' ) );
 			echo '<a href="' . esc_url( $url ) . '" class="' . esc_attr( $classes ) . '" style="display:inline-block;padding:10px 20px;text-decoration:none;font-weight:600;font-size:14px;color:';
-			echo ( $tab_key === $tab ) ? '#6366f1' : '#64748b';
+			echo ( $tab_key === $tab ) ? 'var(--ct-primary, #c2381f)' : 'var(--ct-text-muted, #6f747c)';
 			echo ';border-bottom:';
-			echo ( $tab_key === $tab ) ? '3px solid #6366f1' : '3px solid transparent';
+			echo ( $tab_key === $tab ) ? '3px solid var(--ct-primary, #c2381f)' : '3px solid transparent';
 			echo ';margin-bottom:-2px;transition:color .15s,border-color .15s;">';
 			echo esc_html( $tab_label );
 			if ( $is_pro_tab && ! $pro_active ) {

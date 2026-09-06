@@ -66,8 +66,8 @@ $site_url = home_url();
 
 	<?php if ( 'https' !== wp_parse_url( home_url(), PHP_URL_SCHEME ) ) : ?>
 	<!-- W2: card payments (Stripe live mode) and email-gated access require https -->
-	<div class="notice notice-warning" style="margin:0 0 16px;padding:10px 14px;">
-		<p style="margin:0;">
+	<div class="ct-card ct-card--warn" role="status">
+		<p style="margin:0;font-size:13px;">
 			<strong><?php esc_html_e( 'Your site address is not https.', 'crawlertoll' ); ?></strong>
 			<?php esc_html_e( 'Card payments in Stripe live mode and email-gated access only work over https, and readers\' browsers refuse to send a wallet signature to an insecure page. Ask your host for a free TLS certificate, then set Settings → General → Site Address to https://.', 'crawlertoll' ); ?>
 		</p>
