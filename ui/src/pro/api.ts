@@ -10,6 +10,7 @@ import type {
   StatsResponse,
   TimeseriesResponse,
   RealisedResponse,
+  TrafficResponse,
 } from "./types";
 
 export const LOGS_PER_PAGE = 50;
@@ -67,6 +68,10 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
 
 export function fetchStats(period: Period, signal?: AbortSignal): Promise<StatsResponse> {
   return getJson<StatsResponse>(`stats?period=${period}`, signal);
+}
+
+export function fetchTraffic(period: Period, signal?: AbortSignal): Promise<TrafficResponse> {
+  return getJson<TrafficResponse>(`traffic?period=${period}`, signal);
 }
 
 export function fetchRealised(period: Period, signal?: AbortSignal): Promise<RealisedResponse> {
@@ -167,6 +172,22 @@ function useAsync<T>(fetcher: (signal: AbortSignal) => Promise<T>, deps: unknown
 }
 
 // `tick` lets a caller force a refresh (manual reload / retry).
+export function useTraffic(period: Period, tick = 0): AsyncState<TrafficResponse> {
+  const [state, setState] = useState<AsyncState<TrafficResponse>>({ data: null, loading: true, error: null });
+  useEffect(() => {
+    const ctl = new AbortController();
+    setState((s) => ({ ...s, loading: true, error: null }));
+    fetchTraffic(period, ctl.signal)
+      .then((data) => setState({ data, loading: false, error: null }))
+      .catch((e: unknown) => {
+        if ((e as { name?: string })?.name === "AbortError") return;
+        setState({ data: null, loading: false, error: e instanceof Error ? e.message : "Request failed" });
+      });
+    return () => ctl.abort();
+  }, [period, tick]);
+  return state;
+}
+
 export function useRealised(period: Period, tick = 0): AsyncState<RealisedResponse> {
   const [state, setState] = useState<AsyncState<RealisedResponse>>({ data: null, loading: true, error: null });
   useEffect(() => {

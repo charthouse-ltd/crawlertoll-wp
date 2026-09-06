@@ -155,3 +155,21 @@ export interface RealisedResponse {
   by_day: Array<{ day: string; rail: string; count: number; amount_micros: number }>;
   enrolled: boolean;
 }
+
+// Traffic visibility (W5): every front-end request by kind + the sealed funnel.
+export interface TrafficResponse {
+  days: number;
+  classes: { browser: number; ai_crawler: number; search_engine: number; automation: number };
+  funnel: {
+    sealed_views: number;
+    walls_shown: number;
+    walls_unavailable: number;
+    unlocks: number;
+    paid_unlocks: number;
+    by_rail: { stripe: number; x402: number; meter: number; email: number; renewal: number; cache: number };
+    wall_rate: number;
+    unlock_rate: number;
+  };
+  top_automation: Array<{ ua: string; count: number }>;
+  series: Array<Record<string, number | string>>;
+}

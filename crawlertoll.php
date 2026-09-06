@@ -93,6 +93,8 @@ require_once CRAWLERTOLL_PLUGIN_DIR . 'includes/class-crawlertoll-registry.php';
 require_once CRAWLERTOLL_PLUGIN_DIR . 'includes/class-crawlertoll-stripe.php';
 // Error guard (W4): never white-screen a site; enforcement degrades open, sealing stays closed.
 require_once CRAWLERTOLL_PLUGIN_DIR . 'includes/class-crawlertoll-guard.php';
+// Traffic visibility (W5): who is at the door — browsers, declared AI, search, undeclared automation.
+require_once CRAWLERTOLL_PLUGIN_DIR . 'includes/class-crawlertoll-traffic.php';
 require_once CRAWLERTOLL_PLUGIN_DIR . 'includes/class-crawlertoll-meter.php';
 require_once CRAWLERTOLL_PLUGIN_DIR . 'includes/class-crawlertoll-tiers.php';
 // Publisher-editable wall copy (access-tiers spec §5.4, A3) — free-safe.

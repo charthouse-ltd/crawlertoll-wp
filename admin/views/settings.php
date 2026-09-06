@@ -426,6 +426,41 @@ $site_url = home_url();
 		<script type="application/json" id="ct-bot-data"><?php echo wp_json_encode( $bots ); ?></script>
 	</div>
 
+	<!-- Traffic (W5, free): who is at the door, last 7 days -->
+	<?php $ct_traffic = class_exists( 'CrawlerToll_Traffic' ) ? CrawlerToll_Traffic::summary( 7 ) : null; ?>
+	<?php if ( $ct_traffic ) : ?>
+	<div class="ct-card" id="crawlertoll-traffic">
+		<h2>
+			<span class="dashicons dashicons-visibility"></span>
+			<?php esc_html_e( 'Traffic — who is at the door (last 7 days)', 'crawlertoll' ); ?>
+		</h2>
+		<p class="ct-card-desc"><?php esc_html_e( 'Every front-end request, classified by user agent. Undeclared automation — scripts, headless browsers, generic bots — is what a user-agent paywall cannot bill; on sealed posts it gets the encrypted body, not the article.', 'crawlertoll' ); ?></p>
+		<div class="ct-status-bar">
+			<div class="ct-stat-card"><div class="ct-stat-value"><?php echo esc_html( number_format_i18n( $ct_traffic['classes']['browser'] ) ); ?></div><div class="ct-stat-label"><?php esc_html_e( 'People (browsers)', 'crawlertoll' ); ?></div></div>
+			<div class="ct-stat-card"><div class="ct-stat-value"><?php echo esc_html( number_format_i18n( $ct_traffic['classes']['ai_crawler'] ) ); ?></div><div class="ct-stat-label"><?php esc_html_e( 'Declared AI crawlers', 'crawlertoll' ); ?></div></div>
+			<div class="ct-stat-card"><div class="ct-stat-value"><?php echo esc_html( number_format_i18n( $ct_traffic['classes']['search_engine'] ) ); ?></div><div class="ct-stat-label"><?php esc_html_e( 'Search engines', 'crawlertoll' ); ?></div></div>
+			<div class="ct-stat-card"><div class="ct-stat-value"><?php echo esc_html( number_format_i18n( $ct_traffic['classes']['automation'] ) ); ?></div><div class="ct-stat-label"><?php esc_html_e( 'Undeclared automation', 'crawlertoll' ); ?></div></div>
+		</div>
+		<p style="font-size:13px;margin:10px 0 0;">
+			<?php
+			printf(
+				/* translators: 1: sealed views, 2: walls shown, 3: unlocks, 4: paid unlocks */
+				esc_html__( 'Sealed posts: %1$s views → %2$s walls shown → %3$s unlocks (%4$s paid).', 'crawlertoll' ),
+				esc_html( number_format_i18n( $ct_traffic['funnel']['sealed_views'] ) ),
+				esc_html( number_format_i18n( $ct_traffic['funnel']['walls_shown'] ) ),
+				esc_html( number_format_i18n( $ct_traffic['funnel']['unlocks'] ) ),
+				esc_html( number_format_i18n( $ct_traffic['funnel']['paid_unlocks'] ) )
+			);
+			?>
+			<?php if ( class_exists( 'CrawlerToll_Pro_Admin' ) && CrawlerToll_Pro_Admin::is_pro_active() ) : ?>
+				<a href="<?php echo esc_url( admin_url( 'options-general.php?page=crawlertoll&ct_tab=revenue' ) ); ?>"><?php esc_html_e( 'Full funnel, 30 days and the automation list are on the Revenue tab.', 'crawlertoll' ); ?></a>
+			<?php else : ?>
+				<span style="color:var(--ct-text-muted);"><?php esc_html_e( 'Pro adds the 30-day view, the unlock-by-rail split and the list of automation user agents.', 'crawlertoll' ); ?></span>
+			<?php endif; ?>
+		</p>
+	</div>
+	<?php endif; ?>
+
 	<!-- Recent unlocks (D3, free tier) -->
 	<div class="ct-card">
 		<h2>

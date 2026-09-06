@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { fetchOffer, hasStripeKey, hasWallet, markEmailVerified, meterTokenStore, redeemEmailGrant, redeemMeter, renewPass, requestEmailLink, UnlockError, unlockConfig } from "./api";
+import { fetchOffer, hasStripeKey, hasWallet, markEmailVerified, meterTokenStore, redeemEmailGrant, redeemMeter, renewPass, requestEmailLink, UnlockError, unlockConfig, wallEvent, type WallEvent } from "./api";
 import type { SettlementPass } from "./api";
 import { lowestPriceLabel, offerToRails, type RailTile, type SignedOffer } from "./offer";
 import { payX402, startStripe } from "./payments";
@@ -245,7 +245,21 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
     });
   }, [state]);
 
-  const reveal = async (cek: string, fromCache = false, pass?: SettlementPass) => {
+  // W5: report the wall impression once (first time the wall is actually shown).
+  const shownRef = useRef<"" | "shown" | "unavailable">("");
+  useEffect(() => {
+    if (shownRef.current) return;
+    if (state === "idle" || state === "menu") {
+      shownRef.current = "shown";
+      wallEvent(restBase, "wall_shown");
+    } else if (state === "unavailable") {
+      shownRef.current = "unavailable";
+      wallEvent(restBase, "wall_unavailable");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]);
+
+  const reveal = async (cek: string, fromCache = false, pass?: SettlementPass, source?: WallEvent) => {
     if (!blob) {
       return;
     }
@@ -265,6 +279,8 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
     try {
       setBodyHtml(sanitizeBody(await unseal(blob, cek)));
       setState("unlocked");
+      // W5 funnel: count the unlock by how it happened (never awaited).
+      wallEvent(restBase, fromCache ? "unlock_cache" : source ?? "unlock_renewal");
     } catch (e) {
       if (fromCache) {
         // Stale cache (publisher edited + re-sealed under the same content_id):
@@ -294,7 +310,7 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
       try {
         const r = await renewPass(contentId, pid);
         setRenewNote("");
-        await reveal(r.cek, false, r.pass ?? { pass_id: pid, expires_at: null });
+        await reveal(r.cek, false, r.pass ?? { pass_id: pid, expires_at: null }, "unlock_renewal");
         return; // unlocked — done
       } catch (e) {
         if (e instanceof UnlockError && e.code === "pass_expired") {
@@ -315,7 +331,7 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
     try {
       const r = await renewPass(contentId, passId);
       setRenewNote("");
-      await reveal(r.cek, false, r.pass ?? { pass_id: passId, expires_at: null });
+      await reveal(r.cek, false, r.pass ?? { pass_id: passId, expires_at: null }, "unlock_renewal");
     } catch (e) {
       cekClear(contentId);
       if (e instanceof UnlockError && e.code === "pass_expired") {
@@ -366,7 +382,7 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
       .then(async (r) => {
         strip();
         markEmailVerified(restBase, token); // fail-open bookkeeping
-        await reveal(r.cek, false, r.pass);
+        await reveal(r.cek, false, r.pass, "unlock_email");
       })
       .catch((e) => {
         strip();
@@ -435,7 +451,7 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
     setState("processing");
     try {
       const { cek } = await redeemMeter(contentId, offer.meter.token);
-      await reveal(cek);
+      await reveal(cek, false, undefined, "unlock_meter");
     } catch (e) {
       if (e instanceof UnlockError && (e.code === "unsettled" || e.code.startsWith("key_"))) {
         await loadMenu(true); // force a fresh offer — the allowance may be gone
@@ -499,7 +515,7 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
         // registry re-derives both server-side (spec §3).
         const r = await payX402(contentId, offer, tile.tier);
         setRenewNote("");
-        await reveal(r.cek, false, r.pass);
+        await reveal(r.cek, false, r.pass, "unlock_x402");
       } catch (e) {
         fail(e);
       } finally {
@@ -525,7 +541,7 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
       stripeExpressNode.current,
       async (res) => {
         if (!cancelled) {
-          await reveal(res.cek, false, res.pass);
+          await reveal(res.cek, false, res.pass, "unlock_stripe");
         }
       },
       (message) => {
@@ -569,7 +585,7 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
     setState("processing");
     try {
       const r = await stripeConfirm.current();
-      await reveal(r.cek, false, r.pass);
+      await reveal(r.cek, false, r.pass, "unlock_stripe");
     } catch (e) {
       fail(e);
     }

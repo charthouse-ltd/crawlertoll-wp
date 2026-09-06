@@ -106,6 +106,22 @@ ck( 200 === $code, "GET /crawlertoll/v1/stats as admin → $code (200 expected)"
 ck( is_array( $body ) && array_key_exists( 'current', $body ), '/stats payload carries `current` (totals/top_bots/top_paths)' );
 
 // 5. The logs route the browser fetches also answers for an authed admin.
+// W5: traffic visibility. run.sh already hit the site with a browser UA and
+// GPTBot before this script, so today's counters must show both classes; the
+// public beacon counts known events and rejects unknown ones.
+$tr = get_option( 'crawlertoll_traffic', array() );
+$today = isset( $tr[ gmdate( 'Y-m-d' ) ] ) ? $tr[ gmdate( 'Y-m-d' ) ] : array();
+ck( ! empty( $today['browser'] ), 'traffic: browser requests counted (' . ( $today['browser'] ?? 0 ) . ')' );
+ck( ! empty( $today['ai_crawler'] ), 'traffic: declared AI crawler requests counted (' . ( $today['ai_crawler'] ?? 0 ) . ')' );
+$ev = new WP_REST_Request( 'POST', '/crawlertoll/v1/wall-event' ); $ev->set_param( 'event', 'wall_shown' );
+ck( 200 === rest_do_request( $ev )->get_status(), 'wall-event beacon: wall_shown → 200' );
+$bad = new WP_REST_Request( 'POST', '/crawlertoll/v1/wall-event' ); $bad->set_param( 'event', 'evil' );
+ck( 400 === rest_do_request( $bad )->get_status(), 'wall-event beacon: unknown event → 400' );
+$treq = new WP_REST_Request( 'GET', '/crawlertoll/v1/traffic' ); $treq->set_param( 'period', '7d' );
+$tresp = rest_do_request( $treq );
+$tdata = $tresp->get_data();
+ck( 200 === $tresp->get_status() && isset( $tdata['classes']['browser'], $tdata['funnel']['walls_shown'] ) && $tdata['funnel']['walls_shown'] >= 1, 'GET /traffic (Pro) → 200 with classes + funnel (walls_shown ≥ 1)' );
+
 // W1: realised revenue proxy (Pro). Unenrolled rig → enrolled:false, still 200.
 $rreq = new WP_REST_Request( 'GET', '/crawlertoll/v1/realised' );
 $rreq->set_param( 'period', '7d' );

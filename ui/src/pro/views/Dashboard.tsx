@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { compact, money, proConfig, useRealised, useStats, useTimeseries, type AsyncState } from "../api";
-import type { Period, RealisedResponse, StatsResponse, TimeseriesResponse, TopBot } from "../types";
+import { compact, money, proConfig, useRealised, useStats, useTimeseries, useTraffic, type AsyncState } from "../api";
+import type { Period, RealisedResponse, StatsResponse, TimeseriesResponse, TopBot, TrafficResponse } from "../types";
 import { Card, EmptyState, ErrorBox } from "../components/ui";
 import { ActionBreakdown, fillSeries, fmtDay, Sparkline } from "../components/Charts";
 
@@ -223,7 +223,71 @@ function RealisedSection({ realised }: { realised: AsyncState<RealisedResponse> 
   );
 }
 
-function DashboardBody({ data, ts, realised }: { data: StatsResponse; ts: AsyncState<TimeseriesResponse>; realised: AsyncState<RealisedResponse> }) {
+
+function pct(n: number): string {
+  return `${Math.round(n * 100)}%`;
+}
+
+function TrafficSection({ traffic }: { traffic: AsyncState<TrafficResponse> }) {
+  const t = traffic.data;
+  const tiles: Array<{ key: keyof TrafficResponse["classes"]; label: string; hint: string; accent: string }> = [
+    { key: "browser", label: "People (browsers)", hint: "Readers and anything indistinguishable from one.", accent: "var(--ct-accent)" },
+    { key: "ai_crawler", label: "Declared AI crawlers", hint: "From the catalogue — charged or blocked by your policy.", accent: "var(--ct-accent-2)" },
+    { key: "search_engine", label: "Search engines", hint: "Never charged (safe mode).", accent: "var(--ct-success)" },
+    { key: "automation", label: "Undeclared automation", hint: "curl, scripts, headless browsers, generic bots. A user-agent paywall cannot bill these — sealing gives them the encrypted body.", accent: "var(--ct-danger)" },
+  ];
+  return (
+    <Card title="Traffic — who is at the door" desc="Every front-end request, classified by user agent. Honest about its limit: a headless browser wearing a real browser string counts as a person — which is exactly why the content itself is the lock.">
+      {traffic.error ? (
+        <EmptyState>{traffic.error}</EmptyState>
+      ) : !t ? (
+        <EmptyState>Loading traffic…</EmptyState>
+      ) : (
+        <div className="grid gap-4">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            {tiles.map((x) => (
+              <div key={x.key} className="ct-pro-card p-3">
+                <div className="mb-2 h-1.5 w-8 rounded-full" style={{ background: x.accent }} />
+                <div className="text-xl font-bold tabular-nums">{compact(t.classes[x.key])}</div>
+                <div className="text-xs font-medium">{x.label}</div>
+                <div className="mt-1 text-[11px]" style={{ color: "var(--ct-muted)" }}>{x.hint}</div>
+              </div>
+            ))}
+          </div>
+          <div>
+            <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide" style={{ color: "var(--ct-muted)" }}>Sealed-content funnel</div>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="ct-pro-card p-3"><div className="text-xl font-bold tabular-nums">{compact(t.funnel.sealed_views)}</div><div className="text-xs">Views of sealed posts</div></div>
+              <div className="ct-pro-card p-3"><div className="text-xl font-bold tabular-nums">{compact(t.funnel.walls_shown)}</div><div className="text-xs">Walls shown <span style={{ color: "var(--ct-muted)" }}>({pct(t.funnel.wall_rate)} of views)</span></div></div>
+              <div className="ct-pro-card p-3"><div className="text-xl font-bold tabular-nums">{compact(t.funnel.unlocks)}</div><div className="text-xs">Unlocks <span style={{ color: "var(--ct-muted)" }}>({pct(t.funnel.unlock_rate)} of walls · {compact(t.funnel.paid_unlocks)} paid)</span></div></div>
+            </div>
+            <div className="mt-2 text-[12px]" style={{ color: "var(--ct-muted)" }}>
+              By rail — cards {compact(t.funnel.by_rail.stripe)} · USDC {compact(t.funnel.by_rail.x402)} · free metered {compact(t.funnel.by_rail.meter)} · email {compact(t.funnel.by_rail.email)} · pass renewals {compact(t.funnel.by_rail.renewal)} · returning device {compact(t.funnel.by_rail.cache)}
+              {t.funnel.walls_unavailable > 0 ? ` · unlock unavailable ${compact(t.funnel.walls_unavailable)} (unlock service unreachable — nothing was charged)` : ""}
+            </div>
+          </div>
+          {t.top_automation.length > 0 ? (
+            <div>
+              <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide" style={{ color: "var(--ct-muted)" }}>Most frequent undeclared automation</div>
+              <table className="w-full text-[12px]">
+                <tbody>
+                  {t.top_automation.map((u) => (
+                    <tr key={u.ua} style={{ borderBottom: "1px solid color-mix(in srgb, var(--ct-border) 50%, transparent)" }}>
+                      <td className="py-1 pr-3 font-mono" style={{ wordBreak: "break-all" }}>{u.ua}</td>
+                      <td className="py-1 text-right font-semibold tabular-nums">{compact(u.count)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function DashboardBody({ data, ts, realised, traffic }: { data: StatsResponse; ts: AsyncState<TimeseriesResponse>; realised: AsyncState<RealisedResponse>; traffic: AsyncState<TrafficResponse> }) {
   const { totals, top_bots, top_paths } = data.current;
   const currency = proConfig.currency;
   const maxCrawls = Math.max(1, ...top_bots.map((b) => b.crawls));
@@ -240,6 +304,8 @@ function DashboardBody({ data, ts, realised }: { data: StatsResponse; ts: AsyncS
       </div>
 
       <RealisedSection realised={realised} />
+
+      <TrafficSection traffic={traffic} />
 
       <TrendsSection ts={ts} currency={currency} />
 
@@ -295,6 +361,7 @@ export function Dashboard() {
   const { data, loading, error } = useStats(period, tick);
   const ts = useTimeseries(period, tick);
   const realised = useRealised(period, tick);
+  const traffic = useTraffic(period, tick);
 
   return (
     <div className="grid gap-4" style={{ paddingTop: 4 }}>
@@ -313,7 +380,7 @@ export function Dashboard() {
       ) : loading || !data ? (
         <DashboardSkeleton />
       ) : (
-        <DashboardBody data={data} ts={ts} realised={realised} />
+        <DashboardBody data={data} ts={ts} realised={realised} traffic={traffic} />
       )}
     </div>
   );

@@ -429,3 +429,21 @@ export async function renewPass(contentId: string, passId: string): Promise<KeyR
   }
   throw new UnlockError("Could not renew your access.", `renew_${res.status}`);
 }
+
+// ─── Traffic beacon (W5) ────────────────────────────────────────────
+// Fire-and-forget: the site counts wall impressions and unlocks so the
+// publisher's funnel is real. Never awaited, never surfaced.
+export type WallEvent = "wall_shown" | "wall_unavailable" | "unlock_stripe" | "unlock_x402" | "unlock_meter" | "unlock_email" | "unlock_renewal" | "unlock_cache";
+export function wallEvent(restBase: string, event: WallEvent): void {
+  if (!restBase) return;
+  try {
+    void fetch(`${restBase.replace(/\/$/, "")}/wall-event`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ event }),
+      keepalive: true,
+    }).catch(() => {});
+  } catch {
+    /* beacon is optional */
+  }
+}

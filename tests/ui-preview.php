@@ -5,6 +5,9 @@ define( 'ABSPATH', __DIR__ . '/' );
 define( 'CRAWLERTOLL_OPTION_KEY', 'crawlertoll_settings' );
 
 function wp_parse_url( $u, $c = -1 ) { return parse_url( $u, $c ); }
+if ( ! function_exists( 'get_option' ) ) { function get_option( $k, $d = false ) { return $d; } }
+if ( ! function_exists( 'number_format_i18n' ) ) { function number_format_i18n( $n ) { return number_format( $n ); } }
+if ( ! function_exists( 'admin_url' ) ) { function admin_url( $p = '' ) { return 'https://test.example/wp-admin/' . $p; } }
 if ( ! function_exists( 'home_url' ) ) { function home_url( $p = '' ) { return 'https://test.example' . $p; } }
 if ( ! function_exists( 'rest_url' ) ) { function rest_url( $p = '' ) { return 'https://test.example/wp-json/' . $p; } }
 if ( ! function_exists( 'wp_create_nonce' ) ) { function wp_create_nonce( $a = '' ) { return 'nonce'; } }
@@ -54,7 +57,9 @@ $recent_unlocks_enrolled = false;
 
 ob_start();
 require __DIR__ . '/../includes/class-crawlertoll-wall-copy.php';
-	require_once __DIR__ . '/../includes/class-crawlertoll-stripe.php'; // masked_secret() (settings view, 2026-09-06)
+	require_once __DIR__ . '/../includes/class-crawlertoll-stripe.php';
+	require_once __DIR__ . '/../includes/class-crawlertoll-safemode.php';
+	require_once __DIR__ . '/../includes/class-crawlertoll-traffic.php'; // W5 traffic card // masked_secret() (settings view, 2026-09-06)
 include __DIR__ . '/../admin/views/settings.php';
 $body = ob_get_clean();
 

@@ -111,10 +111,11 @@ class CrawlerToll_Plugin {
 		// cleartext preview to everyone-but-editors and emits the 402 offer at
 		// template_redirect, so an agent and a human get the SAME preview HTML (no
 		// cloaking). Do NOT short-circuit them with the legacy detect-and-toll here.
+		$ct_premium_id = 0;
 		if ( class_exists( 'CrawlerToll_Cut' ) ) {
 			$ct_premium_id = url_to_postid( $request_uri );
-			if ( $ct_premium_id > 0 && CrawlerToll_Cut::is_premium( $ct_premium_id ) ) {
-				return;
+			if ( $ct_premium_id > 0 && ! CrawlerToll_Cut::is_premium( $ct_premium_id ) ) {
+				$ct_premium_id = 0;
 			}
 		}
 
@@ -126,6 +127,16 @@ class CrawlerToll_Plugin {
 			),
 			$settings
 		);
+
+		// Traffic visibility (W5): count every front-end request by kind, and
+		// sealed-page views. Best-effort, guarded — never in the way of the page.
+		CrawlerToll_Guard::run( 'traffic.count', function () use ( $user_agent, $decision, $ct_premium_id ) {
+			CrawlerToll_Traffic::count_request( CrawlerToll_Traffic::classify( $user_agent, $decision ), $ct_premium_id > 0, $user_agent );
+		} );
+
+		if ( $ct_premium_id > 0 ) {
+			return;
+		}
 
 		// Resolve the per-request settlement rail (multi-rail routing, §2.5).
 		// Pass the resolved settings to BOTH the logger and the 402 builder so
@@ -303,6 +314,17 @@ class CrawlerToll_Plugin {
 		) );
 		// Realised revenue (W1) + pass revocation (W3): both read/write the
 		// registry with the site's bearer token; Pro-gated like the dashboard.
+		// Traffic (W5): public beacon from the unlock app + Pro summary.
+		register_rest_route( 'crawlertoll/v1', '/wall-event', array(
+			'methods'             => 'POST',
+			'permission_callback' => '__return_true',
+			'callback'            => CrawlerToll_Guard::rest( array( $this, 'rest_wall_event' ), 'rest.wall_event' ),
+		) );
+		register_rest_route( 'crawlertoll/v1', '/traffic', array(
+			'methods'             => 'GET',
+			'permission_callback' => $pro_settings_perm,
+			'callback'            => CrawlerToll_Guard::rest( array( $this, 'rest_traffic' ), 'rest.traffic' ),
+		) );
 		register_rest_route( 'crawlertoll/v1', '/realised', array(
 			'methods'             => 'GET',
 			'permission_callback' => $pro_settings_perm,
@@ -511,6 +533,28 @@ class CrawlerToll_Plugin {
 			'current'         => $comparison['current'],
 			'change_pct'      => $comparison['change_pct'],
 		);
+	}
+
+	/**
+	 * POST /crawlertoll/v1/wall-event {event} — the unlock app reports wall
+	 * impressions and unlocks so the funnel has real numbers. Public, anonymous,
+	 * no payload beyond an enum; unknown events are dropped (400).
+	 */
+	public function rest_wall_event( $request ) {
+		$event = (string) $request->get_param( 'event' );
+		if ( ! CrawlerToll_Traffic::count_event( $event ) ) {
+			return new WP_Error( 'unknown_event', 'Unknown wall event.', array( 'status' => 400 ) );
+		}
+		return rest_ensure_response( array( 'ok' => true ) );
+	}
+
+	/**
+	 * GET /crawlertoll/v1/traffic?period=30d — visitor classes, sealed funnel,
+	 * unlocks by rail, top undeclared automation (Pro).
+	 */
+	public function rest_traffic( $request ) {
+		$period = $request->get_param( 'period' ) === '7d' ? 7 : 30;
+		return rest_ensure_response( CrawlerToll_Traffic::summary( $period ) );
 	}
 
 	/**
