@@ -21,7 +21,7 @@ interface StripeLike {
 }
 interface StripeElementHandle {
   mount: (sel: string | HTMLElement) => void;
-  on?: (event: string, cb: (ev: { availablePaymentMethods?: unknown; paymentFailed?: (o: { reason: string }) => void }) => void) => void;
+  on?: (event: string, cb: (ev: { availablePaymentMethods?: unknown; paymentFailed?: (o: { reason: string }) => void; error?: { message?: string } }) => void) => void;
 }
 interface StripeElements {
   create: (type: string, opts?: Record<string, unknown>) => StripeElementHandle;
@@ -73,6 +73,7 @@ export async function startStripe(
   onExpressPaid?: (res: PaidRelease) => void | Promise<void>,
   onExpressError?: (message: string) => void,
   onExpressReady?: (available: boolean) => void,
+  onLoadError?: (message: string) => void,
 ): Promise<() => Promise<PaidRelease>> {
   if (!window.Stripe) {
     await loadStripeJs();
@@ -83,11 +84,22 @@ export async function startStripe(
   }
   const { client_secret, intent_id } = await createStripeIntent(restBase, contentId, tierId);
   const elements = stripe.elements({ clientSecret: client_secret });
-  elements.create("payment").mount(mountNode);
+  const payment = elements.create("payment");
+  // A key/account problem surfaces here (invalid publishable key, unsupported
+  // currency, Stripe outage). Without this the reader sees an empty card slot
+  // and a dead "Pay & unlock" button — QA 2026-09-06.
+  payment.on?.("loaderror", () => {
+    onLoadError?.("Card payments are temporarily unavailable on this site. Please choose another option.");
+  });
+  payment.mount(mountNode);
 
   if (expressNode && onExpressPaid) {
     const express = elements.create("expressCheckout");
     if (express.on) {
+      express.on("loaderror", () => {
+        expressNode.style.display = "none";
+        onExpressReady?.(false);
+      });
       express.on("ready", (ev) => {
         // No wallet on this device/account → collapse the slot entirely; the
         // card form below is the always-present path.

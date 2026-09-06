@@ -211,3 +211,18 @@ export function offerToRails(offer: SignedOffer, env: UnlockEnv): RailTile[] {
   // teaser tile was removed — no unproven claims on a reader paywall.)
   return tiles;
 }
+
+/**
+ * The cheapest way to pay for this article, as a label — drives the
+ * "or unlock from …" line on the metered wall. Tiers (article + bundle) win
+ * over the single per-crawl price; null when nothing is purchasable.
+ */
+export function lowestPriceLabel(offer: SignedOffer): string | null {
+  const micros: number[] = [];
+  for (const t of offer.tiers ?? []) micros.push(t.price_micros);
+  for (const t of offer.bundle?.tiers ?? []) micros.push(t.price_micros);
+  const currency = offer.x402?.currency || "USD";
+  if (micros.length > 0) return fmtMicros(Math.min(...micros), currency);
+  if (offer.x402 && offer.x402.payTo && typeof offer.x402.priceMicros === "number") return fmtMicros(offer.x402.priceMicros, currency);
+  return null;
+}

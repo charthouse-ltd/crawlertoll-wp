@@ -82,7 +82,7 @@ $site_url = home_url();
 				<span class="ct-toggle-slider"></span>
 			</label>
 			<span class="ct-toggle-label">
-				<?php echo $is_enabled ? esc_html__( 'CrawlerToll is active — AI crawlers are being detected and enforced.', 'crawlertoll' ) : esc_html__( 'CrawlerToll is paused — all traffic passes through normally.', 'crawlertoll' ); ?>
+				<?php echo $is_enabled ? esc_html__( 'CrawlerToll is active — declared AI crawlers are recognised and charged; premium posts are sealed.', 'crawlertoll' ) : esc_html__( 'CrawlerToll is paused — all traffic passes through normally.', 'crawlertoll' ); ?>
 			</span>
 		</div>
 	</div>

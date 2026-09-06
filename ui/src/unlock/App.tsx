@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { fetchOffer, hasStripeKey, hasWallet, markEmailVerified, meterTokenStore, redeemEmailGrant, redeemMeter, renewPass, requestEmailLink, UnlockError, unlockConfig } from "./api";
 import type { SettlementPass } from "./api";
-import { offerToRails, type RailTile, type SignedOffer } from "./offer";
+import { lowestPriceLabel, offerToRails, type RailTile, type SignedOffer } from "./offer";
 import { payX402, startStripe } from "./payments";
 import type { PaidRelease } from "./payments";
 import { sanitizeBody } from "./sanitize";
@@ -539,6 +539,12 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
           setExpressUp(available);
         }
       },
+      (message) => {
+        if (!cancelled) {
+          setError(message);
+          setState("error");
+        }
+      },
     )
       .then((confirm) => {
         if (!cancelled) {
@@ -612,9 +618,16 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
                 onClick={() => loadMenu()}
                 style={{ background: "none", border: "none", padding: 0, color: "var(--ct-muted)", textDecoration: "underline", cursor: "pointer", fontSize: 12 }}
               >
-                {idlePrice
-                  ? `or pay ${idlePrice} once for this article — keeps your free reads for other articles`
-                  : "or pay once for this article — keeps your free reads for other articles"}
+                {(() => {
+                  // With access tiers the honest number is the cheapest tier, not the per-crawl price.
+                  const from = offer ? lowestPriceLabel(offer) : null;
+                  const tiered = !!(offer && ((offer.tiers && offer.tiers.length > 0) || offer.bundle));
+                  if (from && tiered) return `or unlock from ${from} — keeps your free reads for other articles`;
+                  const p = from || idlePrice;
+                  return p
+                    ? `or pay ${p} once for this article — keeps your free reads for other articles`
+                    : "or pay once for this article — keeps your free reads for other articles";
+                })()}
               </button>
             </p>
             {footer}
@@ -662,6 +675,15 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
           <button type="button" onClick={confirmStripe} style={btn}>
             Pay &amp; unlock
           </button>
+          <p style={{ marginTop: 10, fontSize: 12 }}>
+            <button
+              type="button"
+              onClick={() => setState("menu")}
+              style={{ background: "none", border: "none", padding: 0, color: "var(--ct-muted)", textDecoration: "underline", cursor: "pointer", fontSize: 12 }}
+            >
+              back to all unlock options
+            </button>
+          </p>
           {footer}
         </>
       ) : state === "email" ? (
@@ -787,6 +809,7 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
                 disabled={!t.enabled}
                 onClick={() => pick(t)}
                 title={t.reason}
+                aria-label={t.enabled && t.priceLabel ? `${t.label} — ${t.priceLabel}` : `${t.label}${t.reason ? ` — ${t.reason}` : ""}`}
                 style={{ ...tileBtn, opacity: t.enabled ? 1 : 0.55, cursor: t.enabled ? "pointer" : "not-allowed" }}
               >
                 <span style={{ fontWeight: 600 }}>{t.label}</span>

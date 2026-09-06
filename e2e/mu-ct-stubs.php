@@ -62,6 +62,11 @@ add_filter( 'pre_http_request', function ( $pre, $args, $url ) {
 	}
 
 	// ── Registry sealed endpoints ─────────────────────────────────────
+	// Skipped when CT_E2E_STUB_REGISTRY is defined false: the rig then talks to a
+	// REAL registry (e.g. a local `wrangler dev`) for hands-on browser QA.
+	if ( defined( 'CT_E2E_STUB_REGISTRY' ) && ! CT_E2E_STUB_REGISTRY ) {
+		return $pre;
+	}
 	if ( preg_match( '#/v1/sealed/register$#', $url ) ) {
 		return $ok( array( 'status' => 'registered' ), 201 );
 	}
