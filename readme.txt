@@ -144,6 +144,12 @@ Standard WordPress: Plugins → Deactivate → Delete. The plugin removes its ow
 * Key escrow + settlement via the CrawlerToll registry (x402 V1 + V2, PAYMENT-* headers).
 * Recent unlocks: every paid unlock leaves a receipt you can read back in Settings → CrawlerToll.
 * Fail-closed cache safety for protected pages.
+* Realised revenue: what readers and agents actually paid, by rail, next to the priced-402 "potential" (Pro dashboard); receipts show amounts and link to the Stripe payment or on-chain transaction.
+* Traffic — who is at the door: every front-end request counted as people, declared AI crawlers, search engines or undeclared automation; sealed-content funnel (views → walls → unlocks by rail).
+* Cross-device access: after an unlock, a QR code or 8-character code (single use, 10 minutes) carries the access pass to another device — no second payment.
+* Refunds: card refunds happen on your own Stripe account; "Revoke access" ends the reader's pass at the unlock service (Pro).
+* Error guard: every hook runs inside a guard — the plugin can never white-screen a site; enforcement degrades open, sealing fails closed; Health & diagnostics card with a copyable support bundle.
+* Get-started checklist with live checks (https, unlock service, payment rail, sealed post, wall test) and an https warning where card payments and email links need it.
 
 = 0.2.0 =
 
