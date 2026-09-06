@@ -106,6 +106,14 @@ ck( 200 === $code, "GET /crawlertoll/v1/stats as admin → $code (200 expected)"
 ck( is_array( $body ) && array_key_exists( 'current', $body ), '/stats payload carries `current` (totals/top_bots/top_paths)' );
 
 // 5. The logs route the browser fetches also answers for an authed admin.
+// W1: realised revenue proxy (Pro). Unenrolled rig → enrolled:false, still 200.
+$rreq = new WP_REST_Request( 'GET', '/crawlertoll/v1/realised' );
+$rreq->set_param( 'period', '7d' );
+$rresp = rest_do_request( $rreq );
+$rcode = $rresp->get_status();
+$rdata = $rresp->get_data();
+ck( 200 === $rcode, "GET /crawlertoll/v1/realised as admin → $rcode (200 expected)" );
+ck( is_array( $rdata ) && isset( $rdata['by_rail'], $rdata['unlocks'] ), '/realised payload carries by_rail + unlocks' );
 $lresp = rest_do_request( new WP_REST_Request( 'GET', '/crawlertoll/v1/logs' ) );
 $lcode = (int) $lresp->get_status();
 $lbody = $lresp->get_data();

@@ -4,6 +4,11 @@
 define( 'ABSPATH', __DIR__ . '/' );
 define( 'CRAWLERTOLL_OPTION_KEY', 'crawlertoll_settings' );
 
+function wp_parse_url( $u, $c = -1 ) { return parse_url( $u, $c ); }
+if ( ! function_exists( 'home_url' ) ) { function home_url( $p = '' ) { return 'https://test.example' . $p; } }
+if ( ! function_exists( 'rest_url' ) ) { function rest_url( $p = '' ) { return 'https://test.example/wp-json/' . $p; } }
+if ( ! function_exists( 'wp_create_nonce' ) ) { function wp_create_nonce( $a = '' ) { return 'nonce'; } }
+if ( ! function_exists( 'wp_json_encode' ) ) { function wp_json_encode( $d, $o = 0 ) { return json_encode( $d, $o ); } }
 function esc_html_e( $s, $d = null ) { echo $s; }
 function esc_html__( $s, $d = null ) { return $s; }
 function esc_html( $s ) { return $s; }

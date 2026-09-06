@@ -301,6 +301,18 @@ class CrawlerToll_Plugin {
 			'permission_callback' => $pro_settings_perm,
 			'callback'            => array( $this, 'rest_save_retention' ),
 		) );
+		// Realised revenue (W1) + pass revocation (W3): both read/write the
+		// registry with the site's bearer token; Pro-gated like the dashboard.
+		register_rest_route( 'crawlertoll/v1', '/realised', array(
+			'methods'             => 'GET',
+			'permission_callback' => $pro_settings_perm,
+			'callback'            => array( $this, 'rest_realised' ),
+		) );
+		register_rest_route( 'crawlertoll/v1', '/receipts/revoke', array(
+			'methods'             => 'POST',
+			'permission_callback' => $pro_settings_perm,
+			'callback'            => array( $this, 'rest_revoke_pass' ),
+		) );
 
 		// Pro: provenance lookup.
 		register_rest_route(
@@ -317,24 +329,6 @@ class CrawlerToll_Plugin {
 						'sanitize_callback' => 'sanitize_text_field',
 					),
 				),
-			)
-		);
-
-		// Pro: payment webhook (for settlement rails).
-		register_rest_route(
-			'crawlertoll/v1',
-			'/webhook/payment',
-			array(
-				'methods'             => 'POST',
-				'permission_callback' => function ( $request ) {
-					if ( ! CrawlerToll_Pro_Admin::is_pro_active() ) {
-						return false;
-					}
-					$secret = $request->get_header( 'X-CrawlerToll-Webhook-Secret' );
-					$stored = defined( 'CRAWLERTOLL_WEBHOOK_SECRET' ) ? CRAWLERTOLL_WEBHOOK_SECRET : '';
-					return $secret && hash_equals( $stored, $secret );
-				},
-				'callback'            => array( $this, 'rest_webhook_payment' ),
 			)
 		);
 
@@ -401,7 +395,7 @@ class CrawlerToll_Plugin {
 		}
 
 		$body = array(
-			'$schema'    => 'https://schemas.crawlertoll.com/context-license/v1.json',
+			'$schema'    => 'https://registry.crawlertoll.com/schemas/context-license/v1.json',
 			'version'    => '1.0.0',
 			'publisher'  => array(
 				'name'   => get_bloginfo( 'name' ),
@@ -517,6 +511,44 @@ class CrawlerToll_Plugin {
 			'current'         => $comparison['current'],
 			'change_pct'      => $comparison['change_pct'],
 		);
+	}
+
+	/**
+	 * GET /crawlertoll/v1/realised?period=30d — money actually collected (W1),
+	 * from the registry's receipts. Cached 60s per period; fail-soft.
+	 */
+	public function rest_realised( $request ) {
+		$period = $request->get_param( 'period' ) === '7d' ? '7d' : '30d';
+		$days   = '7d' === $period ? 7 : 30;
+		$key    = 'crawlertoll_realised_' . $period;
+		$cached = get_transient( $key );
+		if ( false !== $cached ) {
+			return rest_ensure_response( $cached );
+		}
+		if ( ! CrawlerToll_Registry::is_registered() ) {
+			return rest_ensure_response( array( 'days' => $days, 'unlocks' => 0, 'paid_unlocks' => 0, 'by_rail' => array(), 'by_day' => array(), 'enrolled' => false ) );
+		}
+		$summary = ( new CrawlerToll_Registry() )->unlock_summary( $days );
+		if ( is_wp_error( $summary ) ) {
+			return new WP_Error( 'registry_unavailable', 'Realised revenue is unavailable right now — the unlock server did not answer.', array( 'status' => 503 ) );
+		}
+		$summary['enrolled'] = true;
+		set_transient( $key, $summary, 60 );
+		return rest_ensure_response( $summary );
+	}
+
+	/**
+	 * POST /crawlertoll/v1/receipts/revoke {pass_id} — refund workflow step 2
+	 * (W3): the publisher refunded on their own Stripe account; end the
+	 * reader's renewal right at the registry.
+	 */
+	public function rest_revoke_pass( $request ) {
+		$pass_id = strtolower( (string) $request->get_param( 'pass_id' ) );
+		$res     = ( new CrawlerToll_Registry() )->revoke_pass( $pass_id );
+		if ( is_wp_error( $res ) ) {
+			return $res;
+		}
+		return rest_ensure_response( array( 'status' => 'revoked', 'pass_id' => $pass_id ) );
 	}
 
 	/**
@@ -976,24 +1008,4 @@ class CrawlerToll_Plugin {
 		);
 	}
 
-	/**
-	 * POST /crawlertoll/v1/webhook/payment
-	 */
-	public function rest_webhook_payment( $request ) {
-		$log_id     = $request->get_param( 'crawlertoll_log_id' );
-		$rail       = $request->get_param( 'rail' );
-		$payment_id = $request->get_param( 'payment_id' );
-
-		if ( ! $log_id || ! $rail || ! $payment_id ) {
-			return new WP_REST_Response( array( 'error' => 'Missing required fields' ), 400 );
-		}
-
-		$ok = $this->db->mark_paid( (int) $log_id, $rail, $payment_id );
-
-		if ( ! $ok ) {
-			return new WP_REST_Response( array( 'error' => 'Failed to mark as paid' ), 500 );
-		}
-
-		return array( 'status' => 'ok' );
-	}
 }

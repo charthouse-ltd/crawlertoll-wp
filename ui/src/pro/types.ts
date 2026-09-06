@@ -138,3 +138,20 @@ export interface SettingsResponse {
     fallback_email: string;
   };
 }
+
+// Realised revenue (W1, 2026-09-06): money actually collected, from the
+// registry's unlock receipts — as opposed to the priced-402 "potential" above.
+export interface RealisedRail {
+  rail: string;
+  currency: string | null;
+  count: number;
+  amount_micros: number;
+}
+export interface RealisedResponse {
+  days: number;
+  unlocks: number;
+  paid_unlocks: number;
+  by_rail: RealisedRail[];
+  by_day: Array<{ day: string; rail: string; count: number; amount_micros: number }>;
+  enrolled: boolean;
+}

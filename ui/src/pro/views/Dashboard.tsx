@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { compact, money, proConfig, useStats, useTimeseries, type AsyncState } from "../api";
-import type { Period, StatsResponse, TimeseriesResponse, TopBot } from "../types";
+import { compact, money, proConfig, useRealised, useStats, useTimeseries, type AsyncState } from "../api";
+import type { Period, RealisedResponse, StatsResponse, TimeseriesResponse, TopBot } from "../types";
 import { Card, EmptyState, ErrorBox } from "../components/ui";
 import { ActionBreakdown, fillSeries, fmtDay, Sparkline } from "../components/Charts";
 
@@ -169,19 +169,77 @@ function TrendsSection({ ts, currency }: { ts: AsyncState<TimeseriesResponse>; c
   );
 }
 
-function DashboardBody({ data, ts }: { data: StatsResponse; ts: AsyncState<TimeseriesResponse> }) {
+const RAIL_LABEL: Record<string, string> = {
+  stripe: "Cards (your Stripe)",
+  x402: "USDC (your wallet)",
+  "stripe-renewal": "Card pass renewals",
+  "x402-renewal": "USDC pass renewals",
+  meter: "Free metered reads",
+  email: "Email-gate unlocks",
+};
+
+function realisedTotal(r: RealisedResponse | null): { micros: number; currency: string } {
+  if (!r) return { micros: 0, currency: proConfig.currency };
+  const paid = r.by_rail.filter((x) => x.amount_micros > 0);
+  const currency = paid[0]?.currency || proConfig.currency;
+  return { micros: paid.filter((x) => (x.currency || currency) === currency).reduce((a, x) => a + x.amount_micros, 0), currency };
+}
+
+function RealisedSection({ realised }: { realised: AsyncState<RealisedResponse> }) {
+  const r = realised.data;
+  return (
+    <Card title="Realised revenue" desc="What readers and agents actually paid — read back from the unlock service's receipts. Cards land on your Stripe account, USDC in your wallet; nothing passes through CrawlerToll.">
+      {realised.error ? (
+        <EmptyState>{realised.error}</EmptyState>
+      ) : !r ? (
+        <EmptyState>Loading receipts…</EmptyState>
+      ) : !r.enrolled ? (
+        <EmptyState>Your site enrolls with the unlock service the first time an article is sealed. Receipts appear here after the first unlock.</EmptyState>
+      ) : r.unlocks === 0 ? (
+        <EmptyState>No unlocks in this period yet.</EmptyState>
+      ) : (
+        <table className="w-full text-[13px]">
+          <thead>
+            <tr style={{ color: "var(--ct-muted)", borderBottom: "1px solid var(--ct-border)" }}>
+              <th className="py-2 pr-3 text-left text-[11px] font-semibold uppercase tracking-wide">Rail</th>
+              <th className="py-2 px-3 text-right text-[11px] font-semibold uppercase tracking-wide">Unlocks</th>
+              <th className="py-2 pl-3 text-right text-[11px] font-semibold uppercase tracking-wide">Collected</th>
+            </tr>
+          </thead>
+          <tbody>
+            {r.by_rail.map((x) => (
+              <tr key={x.rail + (x.currency || "")} style={{ borderBottom: "1px solid color-mix(in srgb, var(--ct-border) 50%, transparent)" }}>
+                <td className="py-2 pr-3">{RAIL_LABEL[x.rail] || x.rail}</td>
+                <td className="py-2 px-3 text-right font-semibold tabular-nums">{compact(x.count)}</td>
+                <td className="py-2 pl-3 text-right font-semibold tabular-nums" style={{ color: x.amount_micros > 0 ? "var(--ct-success)" : "var(--ct-muted)" }}>
+                  {x.amount_micros > 0 ? money(x.amount_micros, x.currency || proConfig.currency) : "—"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </Card>
+  );
+}
+
+function DashboardBody({ data, ts, realised }: { data: StatsResponse; ts: AsyncState<TimeseriesResponse>; realised: AsyncState<RealisedResponse> }) {
   const { totals, top_bots, top_paths } = data.current;
   const currency = proConfig.currency;
   const maxCrawls = Math.max(1, ...top_bots.map((b) => b.crawls));
+  const rt = realisedTotal(realised.data);
 
   return (
     <div className="grid gap-4">
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <KpiCard label="Potential revenue" value={money(totals.total_revenue_micros, currency)} accent="var(--ct-accent)" delta={data.change_pct} gradient />
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+        <KpiCard label="Realised revenue" value={realised.data ? money(rt.micros, rt.currency) : "…"} accent="var(--ct-success)" gradient />
+        <KpiCard label="Potential revenue (priced 402s)" value={money(totals.total_revenue_micros, currency)} accent="var(--ct-accent)" delta={data.change_pct} />
         <KpiCard label="Total AI crawls" value={compact(totals.total_crawls)} accent="var(--ct-accent-2)" />
         <KpiCard label="Charged (402)" value={compact(totals.charged)} accent="var(--ct-success)" />
         <KpiCard label="Blocked (403)" value={compact(totals.blocked)} accent="var(--ct-danger)" />
       </div>
+
+      <RealisedSection realised={realised} />
 
       <TrendsSection ts={ts} currency={currency} />
 
@@ -236,6 +294,7 @@ export function Dashboard() {
   const [tick, setTick] = useState(0);
   const { data, loading, error } = useStats(period, tick);
   const ts = useTimeseries(period, tick);
+  const realised = useRealised(period, tick);
 
   return (
     <div className="grid gap-4" style={{ paddingTop: 4 }}>
@@ -254,7 +313,7 @@ export function Dashboard() {
       ) : loading || !data ? (
         <DashboardSkeleton />
       ) : (
-        <DashboardBody data={data} ts={ts} />
+        <DashboardBody data={data} ts={ts} realised={realised} />
       )}
     </div>
   );

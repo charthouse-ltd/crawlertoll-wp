@@ -73,7 +73,6 @@ ck( true, 'CrawlerToll_Admin construct + register: no fatal' );
 wp_set_current_user( 1 ); // the admin created by install.php (has manage_options)
 rest_get_server();        // boot the REST server + fire rest_api_init (route registration)
 $post_routes = array(
-	'/crawlertoll/v1/webhook/payment',
 	'/crawlertoll/v1/settings/pricing',
 	'/crawlertoll/v1/settings/alerts',
 	'/crawlertoll/v1/settings/rails',
@@ -85,7 +84,6 @@ foreach ( array(
 	'/crawlertoll/v1/logs',
 	'/crawlertoll/v1/provenance',
 	'/crawlertoll/v1/settings',
-	'/crawlertoll/v1/webhook/payment',
 	'/crawlertoll/v1/settings/pricing',
 	'/crawlertoll/v1/settings/alerts',
 	'/crawlertoll/v1/settings/rails',

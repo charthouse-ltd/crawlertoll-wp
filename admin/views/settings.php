@@ -64,6 +64,16 @@ $site_url = home_url();
 		</div>
 	</div>
 
+	<?php if ( 'https' !== wp_parse_url( home_url(), PHP_URL_SCHEME ) ) : ?>
+	<!-- W2: card payments (Stripe live mode) and email-gated access require https -->
+	<div class="notice notice-warning" style="margin:0 0 16px;padding:10px 14px;">
+		<p style="margin:0;">
+			<strong><?php esc_html_e( 'Your site address is not https.', 'crawlertoll' ); ?></strong>
+			<?php esc_html_e( 'Card payments in Stripe live mode and email-gated access only work over https, and readers\' browsers refuse to send a wallet signature to an insecure page. Ask your host for a free TLS certificate, then set Settings → General → Site Address to https://.', 'crawlertoll' ); ?>
+		</p>
+	</div>
+	<?php endif; ?>
+
 	<!-- Enforcement toggle -->
 	<div class="ct-card">
 		<h2>
@@ -451,6 +461,7 @@ $site_url = home_url();
 						<th><?php esc_html_e( 'When', 'crawlertoll' ); ?></th>
 						<th><?php esc_html_e( 'Content', 'crawlertoll' ); ?></th>
 						<th><?php esc_html_e( 'Paid via', 'crawlertoll' ); ?></th>
+						<th><?php esc_html_e( 'Amount', 'crawlertoll' ); ?></th>
 						<th><?php esc_html_e( 'Receipt', 'crawlertoll' ); ?></th>
 					</tr>
 				</thead>
@@ -461,10 +472,22 @@ $site_url = home_url();
 						if ( ! empty( $unlock['content_id'] ) && preg_match( '#/post/(\d+)$#', (string) $unlock['content_id'], $m ) ) {
 							$unlock_post_id = (int) $m[1];
 						}
-						$unlock_ref = isset( $unlock['ref'] ) ? (string) $unlock['ref'] : '';
+						$unlock_ref_full = isset( $unlock['ref'] ) ? (string) $unlock['ref'] : '';
+						$unlock_ref      = $unlock_ref_full;
 						if ( strlen( $unlock_ref ) > 18 ) {
 							$unlock_ref = substr( $unlock_ref, 0, 10 ) . '…' . substr( $unlock_ref, -6 );
 						}
+						// W3: the receipt links to where the money actually is — the
+						// publisher's own Stripe payment, or the on-chain transaction.
+						$unlock_link = '';
+						if ( preg_match( '/^pi_[A-Za-z0-9]+$/', $unlock_ref_full ) ) {
+							$unlock_link = 'https://dashboard.stripe.com/payments/' . rawurlencode( $unlock_ref_full );
+						} elseif ( preg_match( '/^0x[0-9a-fA-F]{64}$/', $unlock_ref_full ) ) {
+							$unlock_link = 'https://basescan.org/tx/' . rawurlencode( $unlock_ref_full );
+						}
+						$unlock_amount = isset( $unlock['amount_micros'] ) ? (int) $unlock['amount_micros'] : 0;
+						$unlock_curr   = ! empty( $unlock['currency'] ) ? (string) $unlock['currency'] : (string) $settings['currency'];
+						$unlock_pass   = ! empty( $unlock['pass_id'] ) && preg_match( '/^[0-9a-f]{32}$/', (string) $unlock['pass_id'] ) ? (string) $unlock['pass_id'] : '';
 						?>
 						<tr>
 							<td>
@@ -507,6 +530,28 @@ $site_url = home_url();
 			</table>
 		<?php endif; ?>
 
+		<p style="font-size:12px;color:var(--ct-text-muted);margin:12px 0 0 0;">
+			<strong><?php esc_html_e( 'Refunds and disputes:', 'crawlertoll' ); ?></strong>
+			<?php esc_html_e( 'card payments live on your own Stripe account — refund there (the receipt links straight to the payment); disputes are handled by Stripe under your account\'s rules. After refunding, use "Revoke access" so the reader\'s pass no longer renews (Pro). USDC payments are final on-chain; refund by sending USDC back to the payer address shown on the transaction.', 'crawlertoll' ); ?>
+		</p>
+		<script>
+		(function(){
+			var btns = document.querySelectorAll('.ct-revoke-pass');
+			if (!btns.length) return;
+			var base = <?php echo wp_json_encode( esc_url_raw( rest_url( 'crawlertoll/v1/' ) ) ); ?>;
+			var nonce = <?php echo wp_json_encode( wp_create_nonce( 'wp_rest' ) ); ?>;
+			btns.forEach(function(b){
+				b.addEventListener('click', function(){
+					if (!window.confirm(<?php echo wp_json_encode( __( 'Revoke this reader\'s access? Their pass stops renewing immediately. Refund the payment in Stripe first.', 'crawlertoll' ) ); ?>)) return;
+					b.disabled = true; b.textContent = '…';
+					fetch(base + 'receipts/revoke', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': nonce }, body: JSON.stringify({ pass_id: b.getAttribute('data-pass') }) })
+						.then(function(r){ return r.json().then(function(j){ return { ok: r.ok, j: j }; }); })
+						.then(function(x){ b.textContent = x.ok ? <?php echo wp_json_encode( __( 'Revoked', 'crawlertoll' ) ); ?> : ((x.j && x.j.message) || <?php echo wp_json_encode( __( 'Could not revoke', 'crawlertoll' ) ); ?>); if (!x.ok) { b.disabled = false; } })
+						.catch(function(){ b.disabled = false; b.textContent = <?php echo wp_json_encode( __( 'Could not revoke', 'crawlertoll' ) ); ?>; });
+				});
+			});
+		})();
+		</script>
 		<p style="font-size:12px;color:var(--ct-text-muted);margin:12px 0 0 0;">
 			<?php esc_html_e( 'Showing the 25 most recent unlocks. The full revenue dashboard — history, filtering, CSV export — is part of CrawlerToll Pro.', 'crawlertoll' ); ?>
 		</p>

@@ -274,6 +274,69 @@ class CrawlerToll_Registry {
 	}
 
 	/**
+	 * Realised revenue (W1): what was actually collected, by rail, over the
+	 * last $days — read from the registry's receipt store. Bearer-authed.
+	 *
+	 * @param int $days 1..365
+	 * @return array{days:int,unlocks:int,paid_unlocks:int,by_rail:array,by_day:array}|WP_Error
+	 */
+	public function unlock_summary( $days = 30 ) {
+		$days     = max( 1, min( 365, (int) $days ) );
+		$response = wp_remote_get(
+			self::base_url() . '/v1/sealed/summary?publisher=' . rawurlencode( wp_parse_url( home_url(), PHP_URL_HOST ) ) . '&days=' . $days,
+			array(
+				'headers' => array( 'Authorization' => 'Bearer ' . $this->get_registry_key() ),
+				'timeout' => 15,
+			)
+		);
+		if ( is_wp_error( $response ) ) {
+			return $response;
+		}
+		$data = json_decode( wp_remote_retrieve_body( $response ), true );
+		if ( ! is_array( $data ) || ! isset( $data['by_rail'] ) ) {
+			$err = is_array( $data ) && ! empty( $data['error'] ) ? (string) $data['error'] : 'registry_error';
+			return new WP_Error( 'crawlertoll_summary', $err, array( 'status' => wp_remote_retrieve_response_code( $response ) ) );
+		}
+		return $data;
+	}
+
+	/**
+	 * Revoke a settlement pass (W3, refunds): after refunding on your own
+	 * Stripe account, end the reader's renewal right at the registry.
+	 *
+	 * @param string $pass_id 32-hex pass id from the receipt.
+	 * @return true|WP_Error
+	 */
+	public function revoke_pass( $pass_id ) {
+		if ( ! preg_match( '/^[0-9a-f]{32}$/', (string) $pass_id ) ) {
+			return new WP_Error( 'invalid_pass', 'That receipt has no revocable pass.', array( 'status' => 400 ) );
+		}
+		$response = wp_remote_request(
+			self::base_url() . '/v1/sealed/pass/' . $pass_id,
+			array(
+				'method'  => 'DELETE',
+				'body'    => wp_json_encode( array( 'publisher' => wp_parse_url( home_url(), PHP_URL_HOST ) ) ),
+				'headers' => array(
+					'Content-Type'  => 'application/json',
+					'Authorization' => 'Bearer ' . $this->get_registry_key(),
+				),
+				'timeout' => 15,
+			)
+		);
+		if ( is_wp_error( $response ) ) {
+			return $response;
+		}
+		$code = (int) wp_remote_retrieve_response_code( $response );
+		if ( 200 !== $code ) {
+			$data = json_decode( wp_remote_retrieve_body( $response ), true );
+			$err  = is_array( $data ) && ! empty( $data['error'] ) ? (string) $data['error'] : 'registry_error';
+			return new WP_Error( $err, 'The unlock server could not revoke this pass.', array( 'status' => $code ) );
+		}
+		delete_transient( 'crawlertoll_recent_unlocks' );
+		return true;
+	}
+
+	/**
 	 * Recent unlock receipts for this site (lineup freeze D3, free tier).
 	 *
 	 * Read back from the registry's store — no local DB. Answers the publisher's

@@ -1,7 +1,8 @@
 <?php
 /**
  * Auto-updating bot catalogue. Weekly cron job fetches the latest catalogue
- * from data.crawlertoll.com and merges new bots into the local list.
+ * from the CrawlerToll unlock service (registry.crawlertoll.com/v1/bots.json)
+ * and merges new bots into the local list.
  *
  * @package CrawlerToll
  */
@@ -15,7 +16,7 @@ class CrawlerToll_CatalogueUpdater {
 	/**
 	 * Remote URL for the canonical bot catalogue.
 	 */
-	const CATALOGUE_URL = 'https://data.crawlertoll.com/bots.json';
+	const CATALOGUE_URL = 'https://registry.crawlertoll.com/v1/bots.json';
 
 	/**
 	 * Option key for the merged catalogue.
@@ -51,8 +52,10 @@ class CrawlerToll_CatalogueUpdater {
 			return;
 		}
 
-		$body = wp_remote_retrieve_body( $response );
-		$remote_bots = json_decode( $body, true );
+		$body    = wp_remote_retrieve_body( $response );
+		$decoded = json_decode( $body, true );
+		// Versioned wrapper {version, count, bots:[…]} (live service) or a bare list.
+		$remote_bots = is_array( $decoded ) && isset( $decoded['bots'] ) && is_array( $decoded['bots'] ) ? $decoded['bots'] : $decoded;
 
 		if ( ! is_array( $remote_bots ) || empty( $remote_bots ) ) {
 			return;
