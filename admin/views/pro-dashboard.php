@@ -46,21 +46,21 @@ $change_arrow = $change_pct >= 0 ? '↑' : '↓';
 		<div class="ct-stat-icon purple">
 			<span class="dashicons dashicons-chart-bar"></span>
 		</div>
-		<div class="ct-stat-value"><?php echo number_format_i18n( $total_crawls ); ?></div>
+		<div class="ct-stat-value"><?php echo esc_html( number_format_i18n( $total_crawls ) ); ?></div>
 		<div class="ct-stat-label"><?php esc_html_e( 'Total AI Crawls', 'crawlertoll' ); ?></div>
 	</div>
 	<div class="ct-stat-card">
 		<div class="ct-stat-icon blue">
 			<span class="dashicons dashicons-tag"></span>
 		</div>
-		<div class="ct-stat-value"><?php echo number_format_i18n( $charged ); ?></div>
+		<div class="ct-stat-value"><?php echo esc_html( number_format_i18n( $charged ) ); ?></div>
 		<div class="ct-stat-label"><?php esc_html_e( 'Charged (402)', 'crawlertoll' ); ?></div>
 	</div>
 	<div class="ct-stat-card">
 		<div class="ct-stat-icon amber">
 			<span class="dashicons dashicons-dismiss"></span>
 		</div>
-		<div class="ct-stat-value"><?php echo number_format_i18n( $blocked ); ?></div>
+		<div class="ct-stat-value"><?php echo esc_html( number_format_i18n( $blocked ) ); ?></div>
 		<div class="ct-stat-label"><?php esc_html_e( 'Blocked (403)', 'crawlertoll' ); ?></div>
 	</div>
 </div>
@@ -99,7 +99,7 @@ $change_arrow = $change_pct >= 0 ? '↑' : '↓';
 					<div style="flex:1;background:#f1f5f9;border-radius:6px;height:24px;overflow:hidden;position:relative;">
 						<div style="background:linear-gradient(90deg,var(--ct-primary),#8b5cf6);height:100%;width:<?php echo (int) $bar_width; ?>%;border-radius:6px;min-width:2px;transition:width .3s;"></div>
 					</div>
-					<div style="font-size:12px;font-weight:600;color:var(--ct-text);width:80px;flex-shrink:0;"><?php echo number_format_i18n( (int) $bot['crawls'] ); ?> <?php esc_html_e( 'crawls', 'crawlertoll' ); ?></div>
+					<div style="font-size:12px;font-weight:600;color:var(--ct-text);width:80px;flex-shrink:0;"><?php echo esc_html( number_format_i18n( (int) $bot['crawls'] ) ); ?> <?php esc_html_e( 'crawls', 'crawlertoll' ); ?></div>
 					<div style="font-size:12px;color:var(--ct-success);font-weight:600;width:80px;flex-shrink:0;">$<?php echo esc_html( $bot_revenue ); ?></div>
 				</div>
 			<?php endforeach; ?>
@@ -132,7 +132,7 @@ $change_arrow = $change_pct >= 0 ? '↑' : '↓';
 				?>
 					<tr style="border-bottom:1px solid #f1f5f9;">
 						<td style="padding:8px 12px;font-size:13px;font-family:monospace;color:var(--ct-text);"><?php echo esc_html( $p['request_path'] ); ?></td>
-						<td style="padding:8px 12px;font-size:13px;color:var(--ct-text);text-align:right;font-weight:600;"><?php echo number_format_i18n( (int) $p['crawls'] ); ?></td>
+						<td style="padding:8px 12px;font-size:13px;color:var(--ct-text);text-align:right;font-weight:600;"><?php echo esc_html( number_format_i18n( (int) $p['crawls'] ) ); ?></td>
 						<td style="padding:8px 12px;font-size:13px;color:var(--ct-success);text-align:right;font-weight:600;">$<?php echo esc_html( $path_rev ); ?></td>
 					</tr>
 				<?php endforeach; ?>

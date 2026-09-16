@@ -138,7 +138,11 @@ Standard WordPress: Plugins → Deactivate → Delete. The plugin removes its ow
 
 = 2.0.0 =
 
-* Ground-up rebuild of the whole product. Configuration from 1.x does not carry over — after updating, open Settings → CrawlerToll and set pricing, payment rails and content rules again.
+* Ground-up rebuild of the whole product. Pricing, rail and policy from 0.1.x carry over; the new features need a minute of setup — open Settings → CrawlerToll and follow the Get started checklist.
+* Safe updates: the version upgrader runs once per release on the first request after an update (auto-updates skip the activation hook), recreates what activation would have, and never fatals.
+* Clean uninstall: with "Remove all data on uninstall" ticked, deleting the plugin removes every option (including your Stripe keys), both tables, per-post data, transients and scheduled tasks.
+* Client-side error reports: if the unlock panel or an admin screen hits a script error, readers and publishers see a retry/reload card instead of a blank area, and the error is listed under Health & diagnostics. Nothing leaves your site.
+* /.well-known/context-license.json is served on sites with plain permalinks too.
 * Sealed-content engine: protected post bodies are AES-256-GCM encrypted; the key releases only against a settled payment.
 * Unlock app: readers pay by card on your own Stripe account, or in USDC (x402) to your own wallet, and decrypt in place; unlocked access persists across reloads.
 * Key escrow + settlement via the CrawlerToll registry (x402 V1 + V2, PAYMENT-* headers).
@@ -180,7 +184,7 @@ Standard WordPress: Plugins → Deactivate → Delete. The plugin removes its ow
 
 = 2.0.0 =
 
-Ground-up rebuild. 1.x settings do not carry over — reconfigure pricing, payment rails and content rules in Settings → CrawlerToll after updating.
+Ground-up rebuild. Your pricing, rail and policy carry over; open Settings → CrawlerToll after updating and follow the Get started checklist to connect a payment rail and seal your first post.
 
 = 0.1.0 =
 

@@ -320,6 +320,12 @@ class CrawlerToll_Plugin {
 			'permission_callback' => '__return_true',
 			'callback'            => CrawlerToll_Guard::rest( array( $this, 'rest_wall_event' ), 'rest.wall_event' ),
 		) );
+		// Client-side error reports from the React apps' error boundary (2026-09-16).
+		register_rest_route( 'crawlertoll/v1', '/client-error', array(
+			'methods'             => 'POST',
+			'permission_callback' => '__return_true',
+			'callback'            => CrawlerToll_Guard::rest( array( $this, 'rest_client_error' ), 'rest.client_error' ),
+		) );
 		register_rest_route( 'crawlertoll/v1', '/traffic', array(
 			'methods'             => 'GET',
 			'permission_callback' => $pro_settings_perm,
@@ -468,7 +474,13 @@ class CrawlerToll_Plugin {
 	}
 
 	public function handle_well_known() {
-		if ( get_query_var( 'crawlertoll_apple_pay' ) ) {
+		// Match the raw path as well as the query vars (2026-09-16): on a site
+		// with plain permalinks rewrite rules are off, WP 404s the path and
+		// redirect_canonical (priority 10) 301s it — which broke registry
+		// enrollment. We run at priority 0 and serve the file regardless.
+		$raw_path = isset( $_SERVER['REQUEST_URI'] ) ? wp_parse_url( sanitize_text_field( wp_unslash( $_SERVER['REQUEST_URI'] ) ), PHP_URL_PATH ) : '';
+		$raw_path = is_string( $raw_path ) ? untrailingslashit( $raw_path ) : '';
+		if ( get_query_var( 'crawlertoll_apple_pay' ) || '/.well-known/apple-developer-merchantid-domain-association' === $raw_path ) {
 			$settings = crawlertoll_get_settings();
 			$file     = isset( $settings['apple_pay_domain_association'] ) ? trim( (string) $settings['apple_pay_domain_association'] ) : '';
 			if ( '' === $file ) {
@@ -481,7 +493,7 @@ class CrawlerToll_Plugin {
 			echo $file; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Stripe verification file, verbatim
 			exit;
 		}
-		if ( ! get_query_var( 'crawlertoll_well_known' ) ) {
+		if ( ! get_query_var( 'crawlertoll_well_known' ) && '/.well-known/context-license.json' !== $raw_path ) {
 			return;
 		}
 		$response = rest_do_request( new WP_REST_Request( 'GET', '/crawlertoll/v1/context-license' ) );
@@ -545,6 +557,35 @@ class CrawlerToll_Plugin {
 		if ( ! CrawlerToll_Traffic::count_event( $event ) ) {
 			return new WP_Error( 'unknown_event', 'Unknown wall event.', array( 'status' => 400 ) );
 		}
+		return rest_ensure_response( array( 'ok' => true ) );
+	}
+
+	/**
+	 * POST /crawlertoll/v1/client-error — a React app's error boundary reports a
+	 * render failure so it lands in Settings → Health next to the PHP errors.
+	 * Public (the wall runs for anonymous readers), bounded (known app names,
+	 * 160 chars, one report per client and app per minute) and deduplicated by
+	 * the guard's ring buffer. Nothing leaves the site.
+	 */
+	public function rest_client_error( $request ) {
+		$app = (string) $request->get_param( 'app' );
+		if ( ! in_array( $app, array( 'unlock-app', 'pro-app', 'free-app' ), true ) ) {
+			return new WP_Error( 'unknown_app', 'Unknown app.', array( 'status' => 400 ) );
+		}
+		$ip  = isset( $_SERVER['REMOTE_ADDR'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) : '';
+		$key = 'crawlertoll_cerr_' . md5( $ip . '|' . $app );
+		if ( get_transient( $key ) ) {
+			return rest_ensure_response( array( 'ok' => true, 'throttled' => true ) );
+		}
+		set_transient( $key, 1, MINUTE_IN_SECONDS );
+		$message = mb_substr( sanitize_text_field( (string) $request->get_param( 'message' ) ), 0, 160 );
+		CrawlerToll_Guard::store( array(
+			'label'   => 'js.' . $app,
+			'type'    => 'ClientError',
+			'message' => '' !== $message ? $message : 'unknown error',
+			'file'    => $app,
+			'line'    => 0,
+		) );
 		return rest_ensure_response( array( 'ok' => true ) );
 	}
 

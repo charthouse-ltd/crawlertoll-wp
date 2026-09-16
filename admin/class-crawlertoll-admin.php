@@ -192,7 +192,7 @@ class CrawlerToll_Admin {
 		<div class="notice notice-warning">
 			<p><strong><?php esc_html_e( 'CrawlerToll 2.0 — rebuilt from the ground up.', 'crawlertoll' ); ?></strong></p>
 			<p>
-				<?php esc_html_e( 'Your previous configuration does not carry over. Please open the CrawlerToll settings and set your pricing, payment rails and content rules again — it takes about two minutes.', 'crawlertoll' ); ?>
+				<?php esc_html_e( 'Your pricing, rail and policy carried over. The new features need a minute of setup: open the CrawlerToll settings, follow the Get started checklist, connect a payment rail and seal your first post.', 'crawlertoll' ); ?>
 			</p>
 			<p>
 				<a class="button button-primary" href="<?php echo esc_url( admin_url( 'options-general.php?page=crawlertoll' ) ); ?>">
@@ -520,7 +520,7 @@ class CrawlerToll_Admin {
 		echo '<p style="color:#64748b;font-size:13px;">';
 		if ( $cut > 0 ) {
 			/* translators: %d: block/paragraph index after which the seal begins. */
-			printf( esc_html__( 'Cut: manual — after block/paragraph #%d (set in the editor). This is what readers see:', 'crawlertoll' ), $cut );
+			printf( esc_html__( 'Cut: manual — after block/paragraph #%d (set in the editor). This is what readers see:', 'crawlertoll' ), (int) $cut );
 		} else {
 			esc_html_e( 'Cut: automatic (first block/paragraph, or a <!--more--> marker). This is what readers see:', 'crawlertoll' );
 		}

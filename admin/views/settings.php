@@ -31,7 +31,7 @@ $site_url = home_url();
 	     replaces the server-rendered cards below with the live version. If the
 	     bundle is absent (un-built tree, or the wp.org build before assets
 	     ship), these cards remain as the graceful fallback. -->
-	<div id="crawlertoll-free-app">
+	<div id="crawlertoll-free-app" data-rest-url="<?php echo esc_attr( rest_url( 'crawlertoll/v1' ) ); ?>">
 		<div class="ct-status-bar">
 			<div class="ct-stat-card">
 				<div class="ct-stat-icon <?php echo $is_enabled ? 'green' : 'amber'; ?>">

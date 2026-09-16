@@ -153,6 +153,13 @@ for f in includes/class-crawlertoll-sealed.php includes/class-crawlertoll-sealed
 	fi
 done
 
+# Upgrader ships in both; it names CrawlerToll_DB behind class_exists (free build degrades to "no table").
+for f in includes/class-crawlertoll-upgrader.php; do
+	if [ -e "$FREE/$f" ]; then echo "  ok: free has $f"; else echo "  FAIL: free MISSING $f"; bad=1; fi
+	if [ -e "$PREM/$f" ]; then echo "  ok: premium has $f"; else echo "  FAIL: premium MISSING $f"; bad=1; fi
+	if grep -q "class_exists( 'CrawlerToll_DB' )" "$FREE/$f"; then echo "  ok: $f guards the Pro DB class"; else echo "  FAIL: $f uses CrawlerToll_DB unguarded"; bad=1; fi
+done
+
 [ "$bad" = 0 ] || { echo "ABORT: build is not safe to ship"; exit 1; }
 
 echo "== zip =="

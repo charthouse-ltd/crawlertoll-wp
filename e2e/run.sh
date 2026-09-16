@@ -141,6 +141,25 @@ else
 fi
 
 echo
-echo "e2e: ${pass} HTTP assertions passed, ${fail} failed (incl. alerts + retention + pro-mount blocks)"
+echo "== upgrade path (auto-update skips activation → upgrader repairs on the first request) =="
+php "$HERE/test-upgrade.php" "$WP_DIR" "$BASE" || fail=$((fail+1))
+
+echo
+echo "== client-error report (React error boundary → Settings → Health) =="
+r="$(curl -sS -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/json' -d '{"app":"unlock-app","message":"TypeError: e2e simulated"}' "$BASE/wp-json/crawlertoll/v1/client-error")"
+[ "$r" = "200" ] && ok "POST /client-error → 200" || no "POST /client-error (got $r)"
+r="$(curl -sS -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/json' -d '{"app":"evil","message":"x"}' "$BASE/wp-json/crawlertoll/v1/client-error")"
+[ "$r" = "400" ] && ok "unknown app rejected → 400" || no "unknown app (got $r)"
+logged="$(php -r '$_SERVER["HTTP_HOST"]="127.0.0.1"; require $argv[1]."/wp-load.php"; wp_cache_flush(); foreach (CrawlerToll_Guard::entries() as $e) { if ($e["label"]==="js.unlock-app" && strpos($e["message"],"e2e simulated")!==false) { echo "yes"; exit; } } echo "no";' "$WP_DIR")"
+[ "$logged" = "yes" ] && ok "report landed in the error log (label js.unlock-app)" || no "report not in error log"
+
+if [ "$KEEP" != "1" ]; then
+	echo
+	echo "== uninstall (opt-in remove-all-data leaves nothing behind) — destructive, last =="
+	php "$HERE/test-uninstall.php" "$WP_DIR" || fail=$((fail+1))
+fi
+
+echo
+echo "e2e: ${pass} HTTP assertions passed, ${fail} failed (incl. alerts + retention + pro-mount + upgrade + uninstall blocks)"
 [ "$KEEP" = "1" ] && echo "server kept at ${BASE} (login admin/password)"
 [ "$fail" = "0" ]

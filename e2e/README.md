@@ -34,3 +34,15 @@ still fires.
 - Re-run after any plugin code change — the plugin is **copied**, not symlinked.
 - Extend `configure.php` (fixtures) and the assertions in `run.sh` as new Pro
   features land.
+
+## Upgrade + uninstall (2026-09-16)
+
+- `run.sh` now also (a) simulates an auto-update on the running rig (marker gone,
+  Pro table dropped, stale rewrite rules) and asserts the upgrader repairs it on
+  the first request with settings untouched (`test-upgrade.php`); (b) posts a
+  client-error report and checks it lands in the error log; (c) runs WP's own
+  `uninstall_plugin()` last and asserts nothing is left (`test-uninstall.php`,
+  skipped with `--keep`).
+- `run-upgrade.sh` is the REAL upgrade: installs `~/crawlertoll-svn/tags/0.1.1`
+  (override with `CT_UPGRADE_FROM`), configures it, swaps in the working tree
+  without activation, and asserts the site works and 0.1.1 settings survive.

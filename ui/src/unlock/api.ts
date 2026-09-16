@@ -469,3 +469,24 @@ export async function claimPassLink(registryBase: string, code: string): Promise
   if (res.status === 429) throw new UnlockError("Too many attempts — please wait a minute.", "rate_limited");
   throw new UnlockError("Could not check the code right now.", `claim_${res.status}`);
 }
+
+/**
+ * Report a client-side render failure to the site (2026-09-16). Lands in
+ * Settings → Health next to the PHP errors; nothing leaves the site. Fire and
+ * forget — a failed report must never affect the reader.
+ */
+export function clientError(restBase: string, app: "unlock-app" | "pro-app" | "free-app", message: string, nonce?: string): void {
+  if (!restBase) return;
+  try {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (nonce) headers["X-WP-Nonce"] = nonce;
+    void fetch(`${restBase.replace(/\/$/, "")}/client-error`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ app, message }),
+      keepalive: true,
+    }).catch(() => {});
+  } catch {
+    /* report is optional */
+  }
+}

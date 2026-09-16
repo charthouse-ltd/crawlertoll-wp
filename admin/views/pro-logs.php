@@ -143,7 +143,7 @@ $base_url = admin_url( 'options-general.php?page=crawlertoll&ct_tab=logs' );
 							<?php echo esc_html( $price_display ); ?>
 						</td>
 						<td style="padding:8px 12px;">
-							<?php echo $hash_display; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped — hash_display is already escaped. ?>
+							<?php echo $hash_display; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- hash_display is already escaped. ?>
 						</td>
 					</tr>
 				<?php endforeach; ?>

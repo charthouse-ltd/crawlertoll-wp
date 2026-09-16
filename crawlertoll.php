@@ -93,6 +93,8 @@ require_once CRAWLERTOLL_PLUGIN_DIR . 'includes/class-crawlertoll-registry.php';
 require_once CRAWLERTOLL_PLUGIN_DIR . 'includes/class-crawlertoll-stripe.php';
 // Error guard (W4): never white-screen a site; enforcement degrades open, sealing stays closed.
 require_once CRAWLERTOLL_PLUGIN_DIR . 'includes/class-crawlertoll-guard.php';
+// Version upgrader: auto-updates skip the activation hook; this runs once per version.
+require_once CRAWLERTOLL_PLUGIN_DIR . 'includes/class-crawlertoll-upgrader.php';
 // Traffic visibility (W5): who is at the door — browsers, declared AI, search, undeclared automation.
 require_once CRAWLERTOLL_PLUGIN_DIR . 'includes/class-crawlertoll-traffic.php';
 require_once CRAWLERTOLL_PLUGIN_DIR . 'includes/class-crawlertoll-meter.php';
@@ -129,6 +131,7 @@ require_once CRAWLERTOLL_PLUGIN_DIR . 'admin/class-crawlertoll-pro-admin.php';
  */
 function crawlertoll_bootstrap() {
 	CrawlerToll_Guard::register_shutdown_handler();
+	CrawlerToll_Upgrader::maybe_upgrade();
 	$plugin = new CrawlerToll_Plugin();
 	$plugin->register();
 
@@ -346,6 +349,7 @@ register_activation_hook(
 		if ( get_option( 'crawlertoll_installed_version' ) === false ) {
 			add_option( 'crawlertoll_installed_version', CRAWLERTOLL_VERSION );
 		}
+		update_option( CrawlerToll_Upgrader::OPTION, CRAWLERTOLL_VERSION );
 		// F4 (live QA 2026-07-28): flush_rewrite_rules() here regenerates the ruleset
 		// BEFORE this plugin's init hooks have re-registered its rewrites, so the
 		// .well-known/context-license.json route (registry enrollment depends on it)

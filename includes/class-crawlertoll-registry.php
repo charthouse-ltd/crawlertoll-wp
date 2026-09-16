@@ -718,6 +718,7 @@ class CrawlerToll_Registry {
 		global $wpdb;
 		$table = $wpdb->prefix . 'crawlertoll_log';
 
+		// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- $table is $wpdb->prefix + a constant, not user input.
 		$hashes = $wpdb->get_results( $wpdb->prepare(
 			"SELECT content_hash, request_path, request_time, price_micros, currency
 			FROM {$table}
@@ -726,6 +727,7 @@ class CrawlerToll_Registry {
 			LIMIT 100",
 			$last_push
 		), ARRAY_A );
+		// phpcs:enable WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
 		if ( empty( $hashes ) ) {
 			$settings['last_hash_push'] = current_time( 'mysql' );
