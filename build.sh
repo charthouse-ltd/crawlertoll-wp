@@ -24,7 +24,7 @@ SLUG="crawlertoll"
 SECRETS=( 'wp_org_gatekeeper' 'fs_dynamic_init' 'pk_30f053' 'vendor/freemius' )
 
 # Dev-only / never-ship paths excluded from BOTH artifacts.
-EXCLUDES=( '.git' '.gitignore' '.github' '.gstack' 'build' 'build.sh' 'e2e' 'tests' 'test-harness.php' 'docs' 'node_modules' 'ui/node_modules' )
+EXCLUDES=( '.git' '.gitignore' '.github' '.gstack' '.wordpress-org' 'build' 'build.sh' 'e2e' 'tests' 'test-harness.php' 'docs' 'node_modules' 'ui/node_modules' )
 
 # WS3 (2026-06-29): the sealing engine — class-crawlertoll-{sealed,sealed-gate,registry}.php
 # — now SHIPS in BOTH artifacts (free included; "free = real sealing" decision). It is

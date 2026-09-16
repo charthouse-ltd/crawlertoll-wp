@@ -180,6 +180,8 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
     parseInt(mount.dataset.priceMicros || "0", 10),
     mount.dataset.currency || "USD",
   );
+  // With access tiers the gate sends the cheapest tier and flags it: "from $1.50", never "for $0.005".
+  const idleFrom = mount.dataset.priceFrom === "1";
 
   // A3: resolved wall templates (site settings + per-article override, merged
   // server-side). Each falls back to the shipped copy when unset or when its
@@ -830,7 +832,9 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
             <p style={{ fontSize: 13, color: "var(--ct-muted)", margin: "4px 0 12px" }}>
               {wallValue ||
                 (idlePrice
-                  ? `Unlock the rest of this article for ${idlePrice} — one-time, no subscription.`
+                  ? idleFrom
+                    ? `Unlock the rest of this article from ${idlePrice} — pay once, no subscription.`
+                    : `Unlock the rest of this article for ${idlePrice} — one-time, no subscription.`
                   : "Unlock the rest of this article.")}
             </p>
             {offer?.meter && offer.meter.remaining <= 0 ? (
@@ -840,7 +844,7 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
               </p>
             ) : null}
             <button type="button" onClick={() => loadMenu()} className="ct-btn">
-              {idlePrice ? `Unlock for ${idlePrice}` : "Unlock"}
+              {idlePrice ? (idleFrom ? `Unlock from ${idlePrice}` : `Unlock for ${idlePrice}`) : "Unlock"}
             </button>
             {footer}
           </>

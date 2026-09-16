@@ -38,6 +38,17 @@ class CrawlerToll_Wall_Copy {
 	 *
 	 * @return array<string,string>
 	 */
+	/**
+	 * Idle value line when the post is sold in access tiers (2026-09-16): the
+	 * quoted number is the cheapest tier, so "for … one-time" would be wrong.
+	 * Used only while the publisher keeps the stock value line.
+	 *
+	 * @return string
+	 */
+	public static function tiered_value_line() {
+		return __( 'Unlock the rest of this article from {price} — pay once, no subscription.', 'crawlertoll' );
+	}
+
 	public static function defaults() {
 		return array(
 			// Lock heading above the offer.

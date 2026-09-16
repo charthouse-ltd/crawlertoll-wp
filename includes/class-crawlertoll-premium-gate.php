@@ -539,11 +539,14 @@ class CrawlerToll_Premium_Gate {
 		$html  = $this->preview_html( $post_id );
 		$html .= '<div class="' . esc_attr( self::MARKER_CLASS ) . ' crawlertoll-locked"';
 		$html .= ' data-content-id="' . esc_attr( $cid ) . '"';
-		$html .= ' data-price-micros="' . esc_attr( (string) (int) $settings['price_micros'] ) . '"';
+		$from  = $this->reader_price_from( $post_id, $settings );
+		$html .= ' data-price-micros="' . esc_attr( (string) $from['micros'] ) . '"';
+		$html .= ' data-price-from="' . ( $from['tiered'] ? '1' : '0' ) . '"';
 		$html .= ' data-currency="' . esc_attr( $settings['currency'] ) . '"';
 		$html .= ' data-site-name="' . esc_attr( get_bloginfo( 'name' ) ) . '"';
 		$html .= ' data-wall-heading="' . esc_attr( $wall['heading'] ) . '"';
-		$html .= ' data-wall-value="' . esc_attr( $wall['value_line'] ) . '"';
+		$value_line = ( $from['tiered'] && $wall['value_line'] === CrawlerToll_Wall_Copy::defaults()['value_line'] ) ? CrawlerToll_Wall_Copy::tiered_value_line() : $wall['value_line'];
+		$html .= ' data-wall-value="' . esc_attr( $value_line ) . '"';
 		$html .= ' data-wall-meter-out="' . esc_attr( $wall['meter_out'] ) . '"';
 		$html .= ' data-wall-unavailable="' . esc_attr( $wall['unavailable'] ) . '"';
 		$html .= ' data-email-mode="' . esc_attr( self::email_gate_mode( $settings ) ) . '"';
@@ -587,6 +590,38 @@ class CrawlerToll_Premium_Gate {
 	 * @param int $post_id
 	 * @return string
 	 */
+	/**
+	 * The number the idle wall quotes to a reader (2026-09-16). With access
+	 * tiers or a bundle configured for the post's path the honest figure is the
+	 * cheapest tier ("from $1.50"), not the per-crawl price agents pay; without
+	 * tiers the single price applies to readers too.
+	 *
+	 * @param int   $post_id
+	 * @param array $settings
+	 * @return array{micros:int,tiered:bool}
+	 */
+	private function reader_price_from( $post_id, $settings ) {
+		$micros = array();
+		$tiers  = CrawlerToll_Tiers::resolve_for_post( $post_id, $settings );
+		foreach ( is_array( $tiers ) ? $tiers : array() as $t ) {
+			$micros[] = (int) $t['price_micros'];
+		}
+		$bundle = CrawlerToll_Tiers::resolve_bundle_for_post( $post_id, $settings );
+		if ( is_array( $bundle ) ) {
+			$rows = isset( $bundle['tiers'] ) && is_array( $bundle['tiers'] ) ? $bundle['tiers'] : $bundle;
+			foreach ( $rows as $t ) {
+				if ( is_array( $t ) && isset( $t['price_micros'] ) ) {
+					$micros[] = (int) $t['price_micros'];
+				}
+			}
+		}
+		$micros = array_filter( $micros, function ( $m ) { return $m > 0; } );
+		if ( ! empty( $micros ) ) {
+			return array( 'micros' => min( $micros ), 'tiered' => true );
+		}
+		return array( 'micros' => (int) $settings['price_micros'], 'tiered' => false );
+	}
+
 	private function locked_section( $post_id ) {
 		$settings = crawlertoll_get_settings();
 		$host     = wp_parse_url( home_url(), PHP_URL_HOST );
@@ -595,11 +630,14 @@ class CrawlerToll_Premium_Gate {
 
 		$html  = '<div class="' . esc_attr( self::MARKER_CLASS ) . ' crawlertoll-locked"';
 		$html .= ' data-content-id="' . esc_attr( $cid ) . '"';
-		$html .= ' data-price-micros="' . esc_attr( (string) (int) $settings['price_micros'] ) . '"';
+		$from  = $this->reader_price_from( $post_id, $settings );
+		$html .= ' data-price-micros="' . esc_attr( (string) $from['micros'] ) . '"';
+		$html .= ' data-price-from="' . ( $from['tiered'] ? '1' : '0' ) . '"';
 		$html .= ' data-currency="' . esc_attr( $settings['currency'] ) . '"';
 		$html .= ' data-site-name="' . esc_attr( get_bloginfo( 'name' ) ) . '"';
 		$html .= ' data-wall-heading="' . esc_attr( $wall['heading'] ) . '"';
-		$html .= ' data-wall-value="' . esc_attr( $wall['value_line'] ) . '"';
+		$value_line = ( $from['tiered'] && $wall['value_line'] === CrawlerToll_Wall_Copy::defaults()['value_line'] ) ? CrawlerToll_Wall_Copy::tiered_value_line() : $wall['value_line'];
+		$html .= ' data-wall-value="' . esc_attr( $value_line ) . '"';
 		$html .= ' data-wall-meter-out="' . esc_attr( $wall['meter_out'] ) . '"';
 		$html .= ' data-wall-unavailable="' . esc_attr( $wall['unavailable'] ) . '"';
 		$html .= ' data-email-mode="' . esc_attr( self::email_gate_mode( $settings ) ) . '"';

@@ -131,8 +131,12 @@ Standard WordPress: Plugins → Deactivate → Delete. The plugin removes its ow
 
 == Screenshots ==
 
-1. The Settings → CrawlerToll admin page with the default policy.
-2. Curl output showing a 402 response to a GPTBot User-Agent.
+1. The wall a reader sees on a sealed article: free metered reads, email unlock, 24-hour and 30-day access by card or USDC, and a section bundle — one payment, straight to the publisher.
+2. Settings → CrawlerToll: live status, the Get started checklist with links to each fix, and the https warning where cards and email links need it.
+3. Revenue dashboard (Pro): realised revenue next to priced 402s, and Traffic — people, declared AI crawlers, search engines and undeclared automation — with the sealed-content funnel.
+4. Section pricing (Pro): per-path prices, free metered reads, access tiers, bundles and the email gate.
+5. Bot-request logs (Pro): every AI-crawler request with the action taken, price and content hash, filterable and exportable.
+6. What a declared AI crawler gets: a priced HTTP 402 with the offer headers and a link to your machine-readable policy.
 
 == Changelog ==
 

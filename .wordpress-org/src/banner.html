@@ -1,0 +1,29 @@
+<!doctype html><html><head><meta charset="utf-8">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Instrument+Sans:wght@400;500;600&display=block" rel="stylesheet">
+<style>
+html,body{margin:0;width:1544px;height:500px;overflow:hidden;background:#151a21}
+.b{position:relative;width:1544px;height:500px;background:#151a21;color:#faf8f3;font-family:"Instrument Sans",system-ui,sans-serif}
+.cipher{position:absolute;right:0;top:0;width:900px;height:500px;padding:26px 40px;box-sizing:border-box;font:500 15px/1.75 ui-monospace,Menlo,monospace;letter-spacing:.06em;color:rgba(250,248,243,.075);word-break:break-all;
+ -webkit-mask-image:linear-gradient(90deg,rgba(0,0,0,0) 0%,rgba(0,0,0,.25) 45%,rgba(0,0,0,1) 100%);mask-image:linear-gradient(90deg,rgba(0,0,0,0) 0%,rgba(0,0,0,.25) 45%,rgba(0,0,0,1) 100%)}
+.brass{position:absolute;left:0;right:0;bottom:0;height:6px;background:linear-gradient(90deg,#b98a2a,#8e2613 60%,#c2381f)}
+.seal{position:absolute;left:108px;top:118px;width:264px;height:264px;border-radius:50%;
+ background:radial-gradient(circle at 35% 30%,#e05a3f,#c2381f 55%,#8e2613);
+ box-shadow:inset 0 0 0 14px rgba(255,255,255,.28),inset 0 0 0 18px rgba(142,38,19,.55),0 40px 70px -30px rgba(194,56,31,.9);display:grid;place-items:center}
+.seal svg{width:128px;height:128px;stroke:#faf8f3;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;filter:drop-shadow(0 4px 10px rgba(0,0,0,.35))}
+.t{position:absolute;left:452px;top:104px;width:1000px}
+.k{font:600 21px/1 "Instrument Sans",sans-serif;letter-spacing:.34em;text-transform:uppercase;color:#b98a2a;margin:0 0 30px}
+.h{font:500 104px/1 "Fraunces",Georgia,serif;font-variation-settings:"opsz" 144;letter-spacing:-.025em;margin:0 0 30px;color:#faf8f3}
+.h em{font-style:italic;color:#e05a3f}
+.s{font:400 29px/1.4 "Instrument Sans",sans-serif;color:rgba(250,248,243,.8);margin:0;max-width:1010px}
+.s b{font-weight:600;color:#faf8f3}
+</style></head><body><div class="b">
+<div class="cipher" id="c"></div>
+<div class="seal"><svg viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2.5"/><path d="M8.5 10V7.5a3.5 3.5 0 0 1 7 0V10"/></svg></div>
+<div class="t"><p class="k">CrawlerToll</p><h1 class="h">Encrypt <em>your</em> content.</h1>
+<p class="s">The paywall where the content itself is the lock. Readers and AI agents pay <b>you</b> directly: card on your own Stripe, or USDC to your own wallet.</p></div>
+<div class="brass"></div></div>
+<script>
+// deterministic pseudo-ciphertext texture
+let s=1234567,o="";for(let i=0;i<2600;i++){s=(s*48271)%2147483647;o+="0123456789abcdef"[s%16]}document.getElementById("c").textContent=o;
+</script></body></html>

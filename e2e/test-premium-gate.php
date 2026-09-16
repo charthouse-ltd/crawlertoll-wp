@@ -96,6 +96,27 @@ function loop_render( $id, $filter, $arg = null ) {
 ck( strpos( loop_render( $pid, 'excerpt' ), $SENT ) === false, 'excerpt: sealed body ABSENT' );
 ck( strpos( loop_render( $pid, 'the_content_feed' ), $SENT ) === false, 'feed content:encoded: sealed body ABSENT' );
 
+// ── idle-wall price (2026-09-16): with tiers the wall quotes the CHEAPEST tier, never the per-crawl price ──
+$pg    = new CrawlerToll_Premium_Gate();
+$plain = $pg->wall_preview_html( $pid );
+ck( preg_match( '/data-price-micros="(\d+)" data-price-from="0"/', $plain, $m ) === 1 && (int) $m[1] === (int) crawlertoll_get_settings()['price_micros'], 'no tiers: wall quotes the single price, from=0' );
+$ts_before = get_option( 'crawlertoll_settings' );
+$ts = crawlertoll_get_settings();
+$ts['path_pricing'] = array( array( 'path' => CrawlerToll_Tiers::url_path_for_post( $pid ), 'price_micros' => 20000, 'currency' => 'USD', 'tiers' => array( array( 'price_micros' => 4000000, 'duration_hours' => 720 ), array( 'price_micros' => 1500000, 'duration_hours' => 24 ) ), 'bundle' => true, 'bundle_tiers' => array( array( 'price_micros' => 9000000, 'duration_hours' => 720 ) ) ) );
+update_option( 'crawlertoll_settings', $ts );
+$tiered = $pg->wall_preview_html( $pid );
+preg_match( '/data-wall-value="([^"]+)"/', $tiered, $vt ); preg_match( '/data-wall-value="([^"]+)"/', $plain, $vp );
+if ( class_exists( 'CrawlerToll_Pro_Admin' ) && CrawlerToll_Pro_Admin::is_pro_active() ) {
+	ck( strpos( $tiered, 'data-price-micros="1500000" data-price-from="1"' ) !== false, 'tiers + bundle (Pro): wall quotes the cheapest tier ($1.50), from=1 — not the $0.005 crawl price' );
+	ck( isset( $vt[1] ) && strpos( $vt[1], 'from {price}' ) !== false && strpos( $vt[1], 'one-time' ) === false, 'tiers (Pro): stock value line switches to "from {price} — pay once"' );
+} else {
+	// Tiers are Pro: the free build must ignore a stored tier rule and keep quoting the single price.
+	ck( preg_match( '/data-price-micros="(\d+)" data-price-from="0"/', $tiered, $m2 ) === 1 && (int) $m2[1] === (int) crawlertoll_get_settings()['price_micros'], 'free build: stored tier rule ignored, wall still quotes the single price, from=0' );
+	ck( isset( $vt[1] ) && strpos( $vt[1], 'for {price}' ) !== false, 'free build: stock value line unchanged' );
+}
+ck( isset( $vp[1] ) && strpos( $vp[1], 'for {price}' ) !== false, 'no tiers: stock value line stays "for {price} — one-time"' );
+update_option( 'crawlertoll_settings', $ts_before ); // leave the rig as we found it
+
 rest_get_server();
 $resp = rest_do_request( new WP_REST_Request( 'GET', '/wp/v2/posts/' . $pid ) );
 $d    = $resp->get_data();
