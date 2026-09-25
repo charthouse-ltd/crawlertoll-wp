@@ -12,7 +12,7 @@
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PLUGIN_DIR="$(cd "$HERE/.." && pwd)"
-FROM="${CT_UPGRADE_FROM:-$HOME/crawlertoll-svn/tags/0.1.1}"
+FROM="${CT_UPGRADE_FROM:-$HERE/fixtures/crawlertoll-0.1.1}"
 WP_DIR="${CT_E2E_UPGRADE_WP:-/tmp/ct-e2e-upgrade-wp}"
 PORT="${CT_E2E_UPGRADE_PORT:-8101}"
 HOST="127.0.0.1:${PORT}"; BASE="http://${HOST}"

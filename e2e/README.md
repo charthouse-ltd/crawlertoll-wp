@@ -43,6 +43,6 @@ still fires.
   client-error report and checks it lands in the error log; (c) runs WP's own
   `uninstall_plugin()` last and asserts nothing is left (`test-uninstall.php`,
   skipped with `--keep`).
-- `run-upgrade.sh` is the REAL upgrade: installs `~/crawlertoll-svn/tags/0.1.1`
+- `run-upgrade.sh` is the REAL upgrade: installs the approved wp.org 0.1.1 tree vendored at `e2e/fixtures/crawlertoll-0.1.1`
   (override with `CT_UPGRADE_FROM`), configures it, swaps in the working tree
   without activation, and asserts the site works and 0.1.1 settings survive.

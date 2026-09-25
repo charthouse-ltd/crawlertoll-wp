@@ -1,0 +1,120 @@
+name: CI
+
+# The release loop's gate. Every push and PR runs everything we trust locally:
+#   suites  — mock harness + every tests/*.php, on the PHP floor and current versions
+#   static  — WordPress security/DB sniffs + PHPCompatibility for the readme floor, UI typecheck
+#   build   — reproducible free + Pro zips (pinned, checksummed Freemius SDK), uploaded as artifacts
+#   e2e     — three real-WordPress rigs: Pro (incl. upgrade, client-error, uninstall),
+#             free build (strip safety), and the real wp.org 0.1.1 → current upgrade
+# Nothing here needs a secret. Payment rails are stubbed at the HTTP edge in e2e.
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  suites:
+    name: suites (PHP ${{ matrix.php }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ["7.4", "8.1", "8.3", "8.4"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: mbstring, openssl, sodium
+          coverage: none
+      - run: bash tests/run-all.sh
+
+  static:
+    name: static (sniffs + UI typecheck)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          coverage: none
+          tools: composer
+      - name: Install PHPCS + WordPress + PHPCompatibility standards
+        run: |
+          composer global config --no-plugins allow-plugins.dealerdirect/phpcodesniffer-composer-installer true
+          composer global require --no-interaction --quiet "squizlabs/php_codesniffer:^3.10" "wp-coding-standards/wpcs:^3.1" "phpcompatibility/php-compatibility:^9.3" "dealerdirect/phpcodesniffer-composer-installer:^1.0"
+          echo "$(composer global config bin-dir --absolute --quiet)" >> "$GITHUB_PATH"
+      - run: bash tests/sniff.sh
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - run: npm ci --no-audit --no-fund
+        working-directory: ui
+      - run: npm run typecheck
+        working-directory: ui
+
+  build:
+    name: build (free + Pro zips)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - run: npm ci --no-audit --no-fund
+        working-directory: ui
+      # build.sh enforces the release invariants (free build carries no Freemius
+      # and no secret markers; sealing engine free-safe) and fails on violation.
+      - run: bash build.sh
+      - run: test -f build/crawlertoll.zip && test -f build/crawlertoll-pro.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: crawlertoll-zips-${{ github.sha }}
+          path: |
+            build/crawlertoll.zip
+            build/crawlertoll-pro.zip
+          retention-days: 30
+
+  e2e:
+    name: e2e WordPress (PHP ${{ matrix.php }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ["7.4", "8.3"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: mbstring, openssl, sodium, pdo_sqlite, sqlite3
+          coverage: none
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - run: npm ci --no-audit --no-fund
+        working-directory: ui
+      - name: Cache WordPress core + SQLite drop-in
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/crawlertoll-e2e
+          key: wp-e2e-${{ runner.os }}-v1
+      - name: Pro rig (enforcement, alerts, retention, Stripe, React mount, upgrade, client-error, uninstall)
+        run: bash e2e/run.sh
+      - name: Free-build rig (strip safety, degradation, sealing, mount)
+        run: bash e2e/run-free.sh
+      - name: Real upgrade rig (wp.org 0.1.1 → current, no activation hook)
+        run: bash e2e/run-upgrade.sh
+      - name: Server logs on failure
+        if: failure()
+        run: tail -n 80 /tmp/ct-e2e-php.log /tmp/ct-e2e-free-php.log /tmp/ct-e2e-upgrade-php.log 2>/dev/null || true

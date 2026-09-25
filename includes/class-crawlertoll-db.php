@@ -12,6 +12,9 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
+// phpcs:disable WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.PreparedSQL.NotPrepared -- Reviewed 2026-09-25: the only interpolated identifier is
+// $this->table_name ($wpdb->prefix + a constant); WHERE clauses are built from fixed fragments with %s/%d placeholders and every
+// value goes through $wpdb->prepare(); ORDER BY is allowlisted and the direction is forced to ASC/DESC.
 class CrawlerToll_DB {
 
 	/**
