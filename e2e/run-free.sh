@@ -32,7 +32,11 @@ cleanup() { if [ "$KEEP" != "1" ] && [ -n "$SRV" ]; then kill "$SRV" 2>/dev/null
 trap cleanup EXIT
 
 echo "== 1/8 build the free zip =="
-( cd "$PLUGIN_DIR" && ./build.sh >/tmp/ct-e2e-free-build.log 2>&1 ) || { cat /tmp/ct-e2e-free-build.log; die "build.sh failed"; }
+if [ "${CT_SKIP_BUILD:-0}" = "1" ] && [ -f "$PLUGIN_DIR/build/crawlertoll.zip" ]; then
+	echo "  (CT_SKIP_BUILD=1: using the existing build/crawlertoll.zip)"
+else
+	( cd "$PLUGIN_DIR" && ./build.sh >/tmp/ct-e2e-free-build.log 2>&1 ) || { cat /tmp/ct-e2e-free-build.log; die "build.sh failed"; }
+fi
 [ -f "$PLUGIN_DIR/build/crawlertoll.zip" ] || die "free zip not produced"
 
 echo "== 2/8 cache WP core + SQLite drop-in =="

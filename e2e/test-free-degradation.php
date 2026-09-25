@@ -50,6 +50,7 @@ $plugin = new CrawlerToll_Plugin();
 $ref = new ReflectionClass( $plugin );
 foreach ( array( 'db', 'logger', 'provenance' ) as $prop ) {
 	$p = $ref->getProperty( $prop );
+	$p->setAccessible( true ); // required before PHP 8.1 (the readme floor is 7.4)
 	ck( $p->getValue( $plugin ) === null, "CrawlerToll_Plugin::\$$prop is null (premium stripped)" );
 }
 
