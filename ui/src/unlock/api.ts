@@ -282,11 +282,13 @@ async function readError(res: Response, fallback: string): Promise<UnlockError> 
 }
 
 /** Start a card payment: returns the Payment Element client secret + intent id. */
-export async function createStripeIntent(restBase: string, contentId: string, tierId: string): Promise<{ client_secret: string; intent_id: string }> {
+export async function createStripeIntent(restBase: string, contentId: string, tierId: string, withdrawalWaiver = false): Promise<{ client_secret: string; intent_id: string }> {
+  const body: Record<string, unknown> = tierId ? { content_id: contentId, tier_id: tierId } : { content_id: contentId };
+  if (withdrawalWaiver) body.withdrawal_waiver = true; // EU/UK: the site refuses the intent without it when required
   const res = await safeFetch(`${restBase.replace(/\/$/, "")}/stripe/intent`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(tierId ? { content_id: contentId, tier_id: tierId } : { content_id: contentId }),
+    body: JSON.stringify(body),
   });
   if (res.status === 200) {
     return (await res.json()) as { client_secret: string; intent_id: string };
@@ -322,8 +324,10 @@ export async function confirmStripe(restBase: string, contentId: string, intentI
  *  accepts both, keyed on the payload's x402Version. When a tier is given,
  *  its tier_id is echoed in the body so the registry re-derives that tier's
  *  price AND duration server-side (spec §3). */
-export function redeemX402(contentId: string, xPayment: string, version: 1 | 2 = 1, tierId?: string): Promise<KeyResponse> {
-  return postKey(contentId, tierId ? { tier_id: tierId } : {}, { [version === 2 ? "PAYMENT-SIGNATURE" : "X-PAYMENT"]: xPayment });
+export function redeemX402(contentId: string, xPayment: string, version: 1 | 2 = 1, tierId?: string, waiverAt?: number | null): Promise<KeyResponse> {
+  const body: Record<string, unknown> = tierId ? { tier_id: tierId } : {};
+  if (waiverAt) body.withdrawal_waiver_at = waiverAt; // evidence on the receipt (EU/UK withdrawal waiver)
+  return postKey(contentId, body, { [version === 2 ? "PAYMENT-SIGNATURE" : "X-PAYMENT"]: xPayment });
 }
 
 /** Meter: redeem a free read against the reader's meter token (no payment). */

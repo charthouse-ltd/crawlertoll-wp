@@ -156,6 +156,11 @@ for f in includes/class-crawlertoll-sealed.php includes/class-crawlertoll-sealed
 	fi
 done
 
+# Waiver helpers: ship in both, free-safe.
+for f in includes/functions-waiver.php; do
+	if [ -e "$FREE/$f" ] && [ -e "$PREM/$f" ]; then echo "  ok: both builds have $f"; else echo "  FAIL: a build is MISSING $f"; bad=1; fi
+	if grep -qE 'CrawlerToll_(DB|Pricing|Alerts|Logger|Provenance|CatalogueUpdater)' "$FREE/$f"; then echo "  FAIL: $f references a Pro-only class"; bad=1; fi
+done
 # Upgrader ships in both; it names CrawlerToll_DB behind class_exists (free build degrades to "no table").
 for f in includes/class-crawlertoll-upgrader.php; do
 	if [ -e "$FREE/$f" ]; then echo "  ok: free has $f"; else echo "  FAIL: free MISSING $f"; bad=1; fi

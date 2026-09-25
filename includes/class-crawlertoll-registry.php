@@ -237,7 +237,7 @@ class CrawlerToll_Registry {
 	 * @param string $currency    Upper-case ISO code actually charged.
 	 * @return array{cek:string,capability:array,pass?:array}|WP_Error
 	 */
-	public function grant_release( $content_id, $receipt_id, $tier_id = '', $device = '', $currency = 'USD' ) {
+	public function grant_release( $content_id, $receipt_id, $tier_id = '', $device = '', $currency = 'USD', $waiver_at = 0 ) {
 		$body = array(
 			'publisher'  => wp_parse_url( home_url(), PHP_URL_HOST ),
 			'rail'       => 'stripe',
@@ -249,6 +249,9 @@ class CrawlerToll_Registry {
 		}
 		if ( '' !== (string) $device ) {
 			$body['device'] = (string) $device;
+		}
+		if ( (int) $waiver_at > 0 ) {
+			$body['withdrawal_waiver_at'] = (int) $waiver_at; // evidence on the receipt (EU/UK withdrawal waiver)
 		}
 		$response = wp_remote_post(
 			self::base_url() . '/v1/sealed/' . $content_id . '/grant',

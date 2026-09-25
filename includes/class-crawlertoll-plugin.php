@@ -911,11 +911,23 @@ class CrawlerToll_Plugin {
 		if ( is_wp_error( $ctx ) ) {
 			return $ctx;
 		}
-		$intent = CrawlerToll_Stripe::create_intent( $ctx['cents'], $ctx['currency'], array(
+		$metadata = array(
 			'content_id' => $content_id,
 			'tier_id'    => $tier_id,
 			'site'       => (string) wp_parse_url( home_url(), PHP_URL_HOST ),
-		) );
+		);
+		// EU/UK withdrawal waiver: refuse to start a card payment without the
+		// reader's express consent, and stamp it on the PaymentIntent — the
+		// publisher's own record in their own Stripe account.
+		if ( crawlertoll_waiver_required() ) {
+			// Strict: only an explicit true is consent (rest_sanitize_boolean would read "yes-please" as true).
+			if ( ! in_array( $request->get_param( 'withdrawal_waiver' ), array( true, 1, '1', 'true' ), true ) ) {
+				return new WP_Error( 'withdrawal_waiver_required', 'Please confirm immediate access before paying.', array( 'status' => 400 ) );
+			}
+			$metadata['withdrawal_waiver_at']   = (string) time();
+			$metadata['withdrawal_waiver_text'] = mb_substr( crawlertoll_waiver_text(), 0, 480 );
+		}
+		$intent = CrawlerToll_Stripe::create_intent( $ctx['cents'], $ctx['currency'], $metadata );
 		if ( is_wp_error( $intent ) ) {
 			return $intent;
 		}
@@ -963,7 +975,10 @@ class CrawlerToll_Plugin {
 		}
 		// Server-confirmed id (pi.id), never the request field — replay dedup at
 		// the registry keys off the canonical intent.
-		$release = ( new CrawlerToll_Registry() )->grant_release( $content_id, (string) $pi['id'], $tier_id, $device, $ctx['currency'] );
+		// The waiver time comes from the VERIFIED intent's metadata (set server-side
+		// at intent creation), never from this request.
+		$waiver_at = isset( $pi['metadata']['withdrawal_waiver_at'] ) && ctype_digit( (string) $pi['metadata']['withdrawal_waiver_at'] ) ? (int) $pi['metadata']['withdrawal_waiver_at'] : 0;
+		$release   = ( new CrawlerToll_Registry() )->grant_release( $content_id, (string) $pi['id'], $tier_id, $device, $ctx['currency'], $waiver_at );
 		if ( is_wp_error( $release ) ) {
 			return $release;
 		}

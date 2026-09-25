@@ -291,6 +291,7 @@ class CrawlerToll_Admin {
 		// merchantid-domain-association; harmless text token, strip tags only.
 		$out['apple_pay_domain_association'] = isset( $input['apple_pay_domain_association'] ) ? trim( sanitize_textarea_field( wp_unslash( $input['apple_pay_domain_association'] ) ) ) : '';
 		$out['terms_url']           = isset( $input['terms_url'] ) ? esc_url_raw( trim( $input['terms_url'] ) ) : '';
+		$out['withdrawal_waiver']   = isset( $input['withdrawal_waiver'] ) && in_array( $input['withdrawal_waiver'], array( 'auto', 'on', 'off' ), true ) ? (string) $input['withdrawal_waiver'] : 'auto';
 		$out['context_license_url'] = isset( $input['context_license_url'] ) ? esc_url_raw( trim( $input['context_license_url'] ) ) : '';
 		$out['policy']              = isset( $input['policy'] ) ? sanitize_textarea_field( wp_unslash( $input['policy'] ) ) : $defaults['policy'];
 		// Wall copy (access-tiers spec §5.4, A3): publisher-editable wall templates.

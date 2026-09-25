@@ -548,6 +548,12 @@ class CrawlerToll_Premium_Gate {
 		$value_line = ( $from['tiered'] && $wall['value_line'] === CrawlerToll_Wall_Copy::defaults()['value_line'] ) ? CrawlerToll_Wall_Copy::tiered_value_line() : $wall['value_line'];
 		$html .= ' data-wall-value="' . esc_attr( $value_line ) . '"';
 		$html .= ' data-wall-meter-out="' . esc_attr( $wall['meter_out'] ) . '"';
+		if ( function_exists( 'crawlertoll_waiver_required' ) && crawlertoll_waiver_required( $settings ) ) {
+			$html .= ' data-waiver="1" data-waiver-text="' . esc_attr( crawlertoll_waiver_text() ) . '"';
+		}
+		if ( ! empty( $settings['terms_url'] ) ) {
+			$html .= ' data-terms-url="' . esc_url( $settings['terms_url'] ) . '"';
+		}
 		$html .= ' data-wall-unavailable="' . esc_attr( $wall['unavailable'] ) . '"';
 		$html .= ' data-email-mode="' . esc_attr( self::email_gate_mode( $settings ) ) . '"';
 		$html .= ' data-rest-url="' . esc_attr( rest_url( 'crawlertoll/v1/' ) ) . '"';
@@ -639,6 +645,12 @@ class CrawlerToll_Premium_Gate {
 		$value_line = ( $from['tiered'] && $wall['value_line'] === CrawlerToll_Wall_Copy::defaults()['value_line'] ) ? CrawlerToll_Wall_Copy::tiered_value_line() : $wall['value_line'];
 		$html .= ' data-wall-value="' . esc_attr( $value_line ) . '"';
 		$html .= ' data-wall-meter-out="' . esc_attr( $wall['meter_out'] ) . '"';
+		if ( function_exists( 'crawlertoll_waiver_required' ) && crawlertoll_waiver_required( $settings ) ) {
+			$html .= ' data-waiver="1" data-waiver-text="' . esc_attr( crawlertoll_waiver_text() ) . '"';
+		}
+		if ( ! empty( $settings['terms_url'] ) ) {
+			$html .= ' data-terms-url="' . esc_url( $settings['terms_url'] ) . '"';
+		}
 		$html .= ' data-wall-unavailable="' . esc_attr( $wall['unavailable'] ) . '"';
 		$html .= ' data-email-mode="' . esc_attr( self::email_gate_mode( $settings ) ) . '"';
 		$html .= ' data-rest-url="' . esc_attr( rest_url( 'crawlertoll/v1/' ) ) . '"';

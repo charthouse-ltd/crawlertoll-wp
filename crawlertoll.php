@@ -93,6 +93,8 @@ require_once CRAWLERTOLL_PLUGIN_DIR . 'includes/class-crawlertoll-registry.php';
 require_once CRAWLERTOLL_PLUGIN_DIR . 'includes/class-crawlertoll-stripe.php';
 // Error guard (W4): never white-screen a site; enforcement degrades open, sealing stays closed.
 require_once CRAWLERTOLL_PLUGIN_DIR . 'includes/class-crawlertoll-guard.php';
+// EU/UK right-of-withdrawal waiver helpers (free-safe).
+require_once CRAWLERTOLL_PLUGIN_DIR . 'includes/functions-waiver.php';
 // Version upgrader: auto-updates skip the activation hook; this runs once per version.
 require_once CRAWLERTOLL_PLUGIN_DIR . 'includes/class-crawlertoll-upgrader.php';
 // Traffic visibility (W5): who is at the door — browsers, declared AI, search, undeclared automation.
@@ -238,6 +240,10 @@ function crawlertoll_default_settings() {
 		'apple_pay_domain_association' => '',
 		'payment_url'          => '',
 		'terms_url'            => '',
+		// EU/UK right of withdrawal (2026-09-25): 'auto' asks readers for the
+		// express consent + acknowledgement on sites that look European; 'on'
+		// always; 'off' never. See crawlertoll_waiver_required().
+		'withdrawal_waiver'    => 'auto',
 		'context_license_url'  => '',
 		'policy'               => crawlertoll_default_policy(),
 		'remove_data_on_uninstall' => false,

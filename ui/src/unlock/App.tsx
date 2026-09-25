@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useId, useRef, useState, type CSSProperties } from "react";
 import { fetchOffer, hasStripeKey, hasWallet, markEmailVerified, meterTokenStore, redeemEmailGrant, redeemMeter, renewPass, requestEmailLink, UnlockError, unlockConfig, wallEvent, type WallEvent, linkPass, claimPassLink } from "./api";
 import type { SettlementPass } from "./api";
 import { lowestPriceLabel, offerToRails, type RailTile, type SignedOffer } from "./offer";
@@ -6,6 +6,7 @@ import { payX402, startStripe } from "./payments";
 import qrcode from "qrcode-generator";
 import type { PaidRelease } from "./payments";
 import { sanitizeBody } from "./sanitize";
+import { downloadReceipt, type Purchase } from "./receipt";
 import { unseal, InsecureContextError, type SealedBlob } from "./unseal";
 
 type State = "idle" | "loading" | "menu" | "stripe" | "processing" | "unlocked" | "error" | "unavailable" | "email" | "email-sent";
@@ -232,6 +233,24 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
   const [emailError, setEmailError] = useState("");
   const [emailBusy, setEmailBusy] = useState(false);
   const grantAttempted = useRef(false);
+  // EU/UK right of withdrawal (2026-09-25): when the site requires it, paid
+  // tiles stay locked until the reader gives express consent to immediate
+  // access and acknowledges losing the 14-day withdrawal right. Unticked by
+  // default (pre-ticked boxes are not valid consent). Time of consent goes to
+  // the site (card) or the unlock service (USDC) as the publisher's evidence.
+  const waiverRequired = mount.dataset.waiver === "1";
+  const waiverText =
+    mount.dataset.waiverText ||
+    "I want access right away. I agree that the content is unlocked immediately and understand that I therefore lose my 14-day right of withdrawal.";
+  const termsUrl = mount.dataset.termsUrl || "";
+  const [waiverAt, setWaiverAt] = useState<number | null>(null);
+  const [waiverNudge, setWaiverNudge] = useState(false);
+  const waiverBox = useRef<HTMLInputElement>(null);
+  const waiverId = useId();
+  // The paid purchase in flight / just completed, for the reader's receipt.
+  const purchase = useRef<Purchase | null>(null);
+  const [receiptReady, setReceiptReady] = useState(false);
+
   const stripeNode = useRef<HTMLDivElement>(null);
   const stripeExpressNode = useRef<HTMLDivElement>(null);
   const stripeConfirm = useRef<null | (() => Promise<PaidRelease>)>(null);
@@ -325,6 +344,11 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
     }
     try {
       setBodyHtml(sanitizeBody(await unseal(blob, cek)));
+      if (!fromCache && (source === "unlock_stripe" || source === "unlock_x402") && purchase.current) {
+        purchase.current.paidAt = Math.floor(Date.now() / 1000);
+        purchase.current.passId = pass?.pass_id;
+        setReceiptReady(true);
+      }
       setState("unlocked");
       // W5 funnel: count the unlock by how it happened (never awaited).
       wallEvent(restBase, fromCache ? "unlock_cache" : source ?? "unlock_renewal");
@@ -628,6 +652,26 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
     if (!tile.enabled) {
       return;
     }
+    if ((tile.rail === "stripe" || tile.rail === "x402") && waiverRequired && !waiverAt) {
+      setWaiverNudge(true);
+      waiverBox.current?.focus();
+      return;
+    }
+    if (tile.rail === "stripe" || tile.rail === "x402") {
+      purchase.current = {
+        siteName: mount.dataset.siteName || "",
+        siteHost: window.location.hostname,
+        title: document.title.split(/\s[–—|-]\s/)[0] || document.title,
+        url: window.location.href.split("#")[0],
+        item: tile.label,
+        price: tile.priceLabel || "",
+        rail: tile.rail,
+        paidAt: 0,
+        waiverAt: waiverRequired ? waiverAt : null,
+        waiverText,
+        termsUrl: termsUrl || undefined,
+      };
+    }
     if (tile.rail === "stripe") {
       setStripeTier(tile.tier ? tile.tier.tier_id : "");
       setState("stripe");
@@ -641,7 +685,7 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
       try {
         // A2: a tier tile pays that tier's price and echoes its tier_id — the
         // registry re-derives both server-side (spec §3).
-        const r = await payX402(contentId, offer, tile.tier);
+        const r = await payX402(contentId, offer, tile.tier, waiverRequired ? waiverAt : null);
         setRenewNote("");
         await reveal(r.cek, false, r.pass, "unlock_x402");
       } catch (e) {
@@ -689,6 +733,7 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
           setState("error");
         }
       },
+      { withdrawalWaiver: waiverRequired && !!waiverAt },
     )
       .then((confirm) => {
         if (!cancelled) {
@@ -746,6 +791,14 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
           ) : (
             <p style={{ margin: 0 }}>
               Unlocked on this device.{" "}
+              {receiptReady && purchase.current ? (
+                <>
+                  <button type="button" onClick={() => purchase.current && downloadReceipt(purchase.current)} className="ct-link">
+                    Save your receipt
+                  </button>
+                  {" · "}
+                </>
+              ) : null}
               <button
                 type="button"
                 onClick={startTransfer}
@@ -1028,6 +1081,38 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
                 {codeError ? <p style={{ fontSize: 12, color: "var(--ct-danger, #c0392b)", margin: "6px 0 0" }}>{codeError}</p> : null}
               </div>
             ) : null}
+            {waiverRequired && tiles.some((t) => t.enabled) ? (
+              <>
+                <label className={`ct-waiver${waiverNudge ? " ct-waiver--nudge" : ""}`} htmlFor={waiverId}>
+                  <input
+                    ref={waiverBox}
+                    id={waiverId}
+                    type="checkbox"
+                    checked={!!waiverAt}
+                    onChange={(e) => {
+                      setWaiverAt(e.target.checked ? Math.floor(Date.now() / 1000) : null);
+                      setWaiverNudge(false);
+                    }}
+                  />
+                  <span>
+                    {waiverText}
+                    {termsUrl ? (
+                      <>
+                        {" "}
+                        <a href={termsUrl} target="_blank" rel="noopener noreferrer">
+                          Terms
+                        </a>
+                      </>
+                    ) : null}
+                  </span>
+                </label>
+                {waiverNudge ? (
+                  <p className="ct-waiver__hint" role="alert">
+                    Please tick the box above to continue. Paid access starts as soon as you pay.
+                  </p>
+                ) : null}
+              </>
+            ) : null}
             {tiles.map((t) => {
               const parts = splitTileLabel(t.label);
               return (
@@ -1036,6 +1121,8 @@ export function App({ mount, blob }: { mount: HTMLElement; blob: SealedBlob | nu
                 type="button"
                 className="ct-tile"
                 disabled={!t.enabled}
+                aria-describedby={waiverRequired && t.enabled ? waiverId : undefined}
+                data-waiting={waiverRequired && t.enabled && !waiverAt ? "1" : undefined}
                 onClick={() => pick(t)}
                 title={t.reason}
                 aria-label={t.enabled && t.priceLabel ? `${t.label} — ${t.priceLabel}` : `${t.label}${t.reason ? ` — ${t.reason}` : ""}`}

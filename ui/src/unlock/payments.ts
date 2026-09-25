@@ -74,6 +74,7 @@ export async function startStripe(
   onExpressError?: (message: string) => void,
   onExpressReady?: (available: boolean) => void,
   onLoadError?: (message: string) => void,
+  opts?: { withdrawalWaiver?: boolean },
 ): Promise<() => Promise<PaidRelease>> {
   if (!window.Stripe) {
     await loadStripeJs();
@@ -82,7 +83,7 @@ export async function startStripe(
   if (!stripe) {
     throw new UnlockError("Card payments are unavailable.", "stripe_init");
   }
-  const { client_secret, intent_id } = await createStripeIntent(restBase, contentId, tierId);
+  const { client_secret, intent_id } = await createStripeIntent(restBase, contentId, tierId, !!opts?.withdrawalWaiver);
   const elements = stripe.elements({ clientSecret: client_secret });
   const payment = elements.create("payment");
   // A key/account problem surfaces here (invalid publishable key, unsupported
@@ -200,6 +201,7 @@ export async function payX402(
   contentId: string,
   offer: SignedOffer,
   tier?: { tier_id: string; price_micros: number; duration_hours: number | null },
+  waiverAt?: number | null,
 ): Promise<PaidRelease> {
   const x = offer.x402;
   if (!x || !x.payTo) {
@@ -305,6 +307,6 @@ export async function payX402(
           },
     ),
   );
-  const res = await redeemX402(contentId, xPayment, version, tier?.tier_id);
+  const res = await redeemX402(contentId, xPayment, version, tier?.tier_id, waiverAt);
   return { cek: res.cek, pass: res.pass };
 }

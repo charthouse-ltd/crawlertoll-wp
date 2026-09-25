@@ -307,3 +307,20 @@
 @media (prefers-reduced-motion: reduce) {
   .ct-wall *, .ct-unlocked, .ct-transfer { animation: none !important; transition: none !important; }
 }
+
+/* EU/UK withdrawal waiver (2026-09-25): consent before paid tiles. */
+.ct-wall .ct-waiver {
+  display: flex; gap: 10px; align-items: flex-start;
+  margin: 2px 0 4px; padding: 10px 12px;
+  border: 1px solid var(--ct-border); border-radius: 12px;
+  background: var(--ct-elevated); color: var(--ct-text);
+  font-size: 12.5px; line-height: 1.45; cursor: pointer;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.ct-wall .ct-waiver input { flex: none; width: 16px; height: 16px; margin: 1px 0 0; accent-color: var(--ct-accent); cursor: pointer; }
+.ct-wall .ct-waiver a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.ct-wall .ct-waiver--nudge { border-color: var(--ct-accent); box-shadow: 0 0 0 3px var(--ct-accent-soft); }
+.ct-wall .ct-waiver__hint { margin: 0 0 6px; font-size: 12px; font-weight: 600; color: var(--ct-accent-deep); }
+.ct-wall .ct-tile[data-waiting="1"] { opacity: .62; }
+.ct-wall .ct-tile[data-waiting="1"]:hover { opacity: .8; }
+@media (prefers-reduced-motion: reduce) { .ct-wall .ct-waiver { transition: none; } }

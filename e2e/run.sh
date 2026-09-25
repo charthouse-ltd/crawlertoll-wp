@@ -141,6 +141,10 @@ else
 fi
 
 echo
+echo "== receipts table (amount, payment link, withdrawal waiver, revoke) rendered as admin =="
+php "$HERE/test-receipts-view.php" "$WP_DIR" || fail=$((fail+1))
+
+echo
 echo "== upgrade path (auto-update skips activation → upgrader repairs on the first request) =="
 php "$HERE/test-upgrade.php" "$WP_DIR" "$BASE" || fail=$((fail+1))
 

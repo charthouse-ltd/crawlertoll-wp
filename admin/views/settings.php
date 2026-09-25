@@ -305,6 +305,27 @@ $site_url = home_url();
 					/>
 				</td>
 			</tr>
+			<tr>
+				<th scope="row">
+					<label for="crawlertoll-withdrawal-waiver"><?php esc_html_e( 'EU/UK right of withdrawal', 'crawlertoll' ); ?></label>
+				</th>
+				<td>
+					<?php $ct_waiver_mode = isset( $settings['withdrawal_waiver'] ) ? (string) $settings['withdrawal_waiver'] : 'auto'; ?>
+					<select id="crawlertoll-withdrawal-waiver" name="<?php echo esc_attr( CRAWLERTOLL_OPTION_KEY ); ?>[withdrawal_waiver]">
+						<option value="auto" <?php selected( $ct_waiver_mode, 'auto' ); ?>><?php esc_html_e( 'Automatic — ask when this site looks European', 'crawlertoll' ); ?></option>
+						<option value="on" <?php selected( $ct_waiver_mode, 'on' ); ?>><?php esc_html_e( 'Always ask', 'crawlertoll' ); ?></option>
+						<option value="off" <?php selected( $ct_waiver_mode, 'off' ); ?>><?php esc_html_e( 'Never ask', 'crawlertoll' ); ?></option>
+					</select>
+					<p class="description">
+						<?php esc_html_e( 'Consumers in the EU and UK may cancel an online purchase within 14 days. For content that unlocks immediately, that right ends only if the reader first agrees to immediate access and acknowledges losing it. When this is on, paid options on the wall stay locked until the reader ticks that box; the time of consent is stored on your Stripe payment and on the unlock receipt, and the reader can save a receipt that includes it. Turn it on if you sell to readers in Europe from anywhere else.', 'crawlertoll' ); ?>
+					</p>
+					<p class="description">
+						<strong><?php esc_html_e( 'Currently:', 'crawlertoll' ); ?></strong>
+						<?php echo crawlertoll_waiver_required( $settings ) ? esc_html__( 'readers are asked before paying.', 'crawlertoll' ) : esc_html__( 'readers are not asked.', 'crawlertoll' ); ?>
+						<?php esc_html_e( 'This helps you meet the rule; it is not legal advice.', 'crawlertoll' ); ?>
+					</p>
+				</td>
+			</tr>
 		</table>
 	</div>
 
@@ -590,10 +611,32 @@ $site_url = home_url();
 								</span>
 							</td>
 							<td>
-								<?php if ( '' !== $unlock_ref ) : ?>
-									<code style="font-size:11px;" title="<?php echo esc_attr( (string) $unlock['ref'] ); ?>"><?php echo esc_html( $unlock_ref ); ?></code>
+								<?php
+								if ( $unlock_amount > 0 ) {
+									echo esc_html( number_format_i18n( $unlock_amount / 1000000, 2 ) . ' ' . $unlock_curr );
+								} else {
+									echo '<span title="' . esc_attr__( 'Free read, email unlock or pass renewal — no payment', 'crawlertoll' ) . '">—</span>';
+								}
+								?>
+							</td>
+							<td>
+								<?php if ( '' !== $unlock_ref && '' !== $unlock_link ) : ?>
+									<a href="<?php echo esc_url( $unlock_link ); ?>" target="_blank" rel="noopener" title="<?php echo esc_attr( $unlock_ref_full ); ?>"><code style="font-size:11px;"><?php echo esc_html( $unlock_ref ); ?></code></a>
+								<?php elseif ( '' !== $unlock_ref ) : ?>
+									<code style="font-size:11px;" title="<?php echo esc_attr( $unlock_ref_full ); ?>"><?php echo esc_html( $unlock_ref ); ?></code>
 								<?php else : ?>
 									—
+								<?php endif; ?>
+								<?php if ( ! empty( $unlock['waiver_at'] ) ) : ?>
+									<br /><span class="ct-waiver-mark" style="font-size:11px;color:var(--ct-text-muted);" title="<?php echo esc_attr( wp_date( 'Y-m-d H:i:s T', (int) $unlock['waiver_at'] ) ); ?>">
+										<?php
+										/* translators: %s: date and time the reader gave consent */
+										printf( esc_html__( 'Withdrawal waived %s', 'crawlertoll' ), esc_html( wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), (int) $unlock['waiver_at'] ) ) );
+										?>
+									</span>
+								<?php endif; ?>
+								<?php if ( '' !== $unlock_pass && $unlock_amount > 0 && class_exists( 'CrawlerToll_Pro_Admin' ) && CrawlerToll_Pro_Admin::is_pro_active() ) : ?>
+									<br /><button type="button" class="button-link ct-revoke-pass" data-pass="<?php echo esc_attr( $unlock_pass ); ?>" style="font-size:11px;"><?php esc_html_e( 'Revoke access', 'crawlertoll' ); ?></button>
 								<?php endif; ?>
 							</td>
 						</tr>

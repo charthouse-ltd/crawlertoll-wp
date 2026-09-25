@@ -150,5 +150,50 @@ delete_option( 'ct_e2e_stripe_status' );
 $grants_after = get_option( 'ct_e2e_grants', array() );
 ck( count( $grants_after ) === count( $grants ), 'no grant was requested for an unsettled intent' );
 
+// ── 6. EU/UK right-of-withdrawal waiver (2026-09-25) ─────────────────
+// The first flow above ran with the default 'auto' on a non-European rig → no
+// consent needed, no waiver stamped, no waiver sent to the registry.
+ck( ! isset( $intents[ $intent_id ]['metadata']['withdrawal_waiver_at'] ), "auto on a non-European site: no waiver stamped on the intent" );
+ck( is_array( $g ) && ! isset( $g['withdrawal_waiver_at'] ), 'auto on a non-European site: no waiver sent with the grant' );
+
+update_option( 'ct_e2e_stripe_status', 'succeeded' );
+$s = get_option( 'crawlertoll_settings' );
+$s['withdrawal_waiver'] = 'on';
+update_option( 'crawlertoll_settings', $s );
+list( $code, $out ) = post_json( $intent_url, array( 'content_id' => $content_id, 'tier_id' => 't1' ) );
+ck( 400 === $code && isset( $out['code'] ) && 'withdrawal_waiver_required' === $out['code'], "waiver on: intent WITHOUT consent → 400 withdrawal_waiver_required (got $code)" );
+list( $code, $out ) = post_json( $intent_url, array( 'content_id' => $content_id, 'tier_id' => 't1', 'withdrawal_waiver' => 'yes-please' ) );
+ck( 400 === $code, "waiver on: a non-boolean consent value is not consent → 400 (got $code)" );
+$before = time();
+list( $code, $out ) = post_json( $intent_url, array( 'content_id' => $content_id, 'tier_id' => 't1', 'withdrawal_waiver' => true ) );
+ck( 200 === $code && ! empty( $out['intent_id'] ), "waiver on: intent WITH consent → 200 (got $code)" );
+$w_intent = isset( $out['intent_id'] ) ? $out['intent_id'] : '';
+wp_cache_flush(); // the stub writes from the server process; drop this process's option cache
+$intents  = get_option( 'ct_e2e_intents', array() );
+$w_meta   = isset( $intents[ $w_intent ]['metadata'] ) ? $intents[ $w_intent ]['metadata'] : array();
+ck( isset( $w_meta['withdrawal_waiver_at'] ) && (int) $w_meta['withdrawal_waiver_at'] >= $before && (int) $w_meta['withdrawal_waiver_at'] <= time(), 'consent time (server clock) stamped on the publisher\'s PaymentIntent' );
+ck( isset( $w_meta['withdrawal_waiver_text'] ) && false !== stripos( $w_meta['withdrawal_waiver_text'], 'right of withdrawal' ), 'the exact consent sentence is stored on the PaymentIntent' );
+list( $code, $out ) = post_json( $confirm_url, array( 'content_id' => $content_id, 'intent_id' => $w_intent, 'tier_id' => 't1', 'withdrawal_waiver_at' => 12345 ) );
+ck( 200 === $code && isset( $out['cek'] ), "waiver on: confirm → 200 with cek (got $code)" );
+wp_cache_flush();
+$grants = get_option( 'ct_e2e_grants', array() );
+$wg     = end( $grants );
+ck( is_array( $wg ) && isset( $wg['withdrawal_waiver_at'] ) && (int) $wg['withdrawal_waiver_at'] === (int) $w_meta['withdrawal_waiver_at'], 'grant carries the waiver time from the VERIFIED intent (a forged request value is ignored)' );
+
+$s['withdrawal_waiver'] = 'off';
+update_option( 'crawlertoll_settings', $s );
+list( $code, $out ) = post_json( $intent_url, array( 'content_id' => $content_id, 'tier_id' => 't1' ) );
+ck( 200 === $code, "waiver off: intent without consent → 200 (got $code)" );
+
+// Wall markup follows the setting.
+$html_off = wp_remote_retrieve_body( wp_remote_get( get_permalink( $post_id ), array( 'timeout' => 15 ) ) );
+ck( false === strpos( $html_off, 'data-waiver="1"' ), 'waiver off: wall carries no waiver flag' );
+$s['withdrawal_waiver'] = 'on';
+update_option( 'crawlertoll_settings', $s );
+$html_on = wp_remote_retrieve_body( wp_remote_get( get_permalink( $post_id ), array( 'timeout' => 15 ) ) );
+ck( false !== strpos( $html_on, 'data-waiver="1"' ) && false !== strpos( $html_on, 'data-waiver-text="I want access right away.' ), 'waiver on: wall carries the flag and the consent sentence' );
+$s['withdrawal_waiver'] = 'auto';
+update_option( 'crawlertoll_settings', $s );
+
 echo "\nstripe e2e: " . ( $fail ? "$fail failed" : 'all passed' ) . "\n";
 exit( $fail ? 1 : 0 );

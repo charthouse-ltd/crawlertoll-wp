@@ -101,6 +101,10 @@ No — payment settles *before* access. When a crawler or reader pays, the money
 
 Every paid unlock leaves a receipt you can read back in **Settings → CrawlerToll** (recent unlocks; Pro adds full history with CSV export). On the Stripe rail, Stripe's own receipts, invoices and tax reports apply automatically, since payments run through your account. On the x402 rail, the on-chain transaction hash is the receipt, linked in the unlock record to the exact article and time.
 
+= Do EU and UK readers have a right to cancel? =
+
+Yes, normally 14 days, but for content that unlocks immediately it ends once the reader has agreed to immediate access and acknowledged losing it. With Settings → CrawlerToll → "EU/UK right of withdrawal" on (automatic for sites that look European), the paid options stay locked until the reader ticks that box. The consent time is stored on your Stripe payment and on the unlock receipt, and the reader can save a receipt that states it. You are the seller; this helps you meet the rule and is not legal advice.
+
 = Will this block Google or Bing from crawling my site? =
 
 No. The default policy targets specifically *AI* crawlers — GPTBot, ClaudeBot, PerplexityBot, Google-Extended (Google's training-data crawler, *not* Googlebot), Applebot-Extended (Apple's training crawler, *not* Applebot), etc. Search-engine crawlers continue to index your site normally unless you explicitly add them to the policy.
@@ -143,6 +147,8 @@ Standard WordPress: Plugins → Deactivate → Delete. The plugin removes its ow
 = 2.0.0 =
 
 * Ground-up rebuild of the whole product. Pricing, rail and policy from 0.1.x carry over; the new features need a minute of setup — open Settings → CrawlerToll and follow the Get started checklist.
+* EU/UK right of withdrawal: optional (automatic on European sites) consent checkbox before any paid unlock; card payments are refused without it, the consent time is stamped on your Stripe payment and on the unlock receipt, and readers can save a receipt stating it.
+* Recent unlocks now actually show the amount, a link to the Stripe payment or on-chain transaction, the withdrawal-waiver time, and the Pro "Revoke access" button (the cells were computed but never printed).
 * Safe updates: the version upgrader runs once per release on the first request after an update (auto-updates skip the activation hook), recreates what activation would have, and never fatals.
 * Clean uninstall: with "Remove all data on uninstall" ticked, deleting the plugin removes every option (including your Stripe keys), both tables, per-post data, transients and scheduled tasks.
 * Client-side error reports: if the unlock panel or an admin screen hits a script error, readers and publishers see a retry/reload card instead of a blank area, and the error is listed under Health & diagnostics. Nothing leaves your site.

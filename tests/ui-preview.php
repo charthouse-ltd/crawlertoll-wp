@@ -59,6 +59,8 @@ ob_start();
 require __DIR__ . '/../includes/class-crawlertoll-wall-copy.php';
 	require_once __DIR__ . '/../includes/class-crawlertoll-stripe.php';
 	require_once __DIR__ . '/../includes/class-crawlertoll-safemode.php';
+	if ( ! function_exists( 'get_locale' ) ) { function get_locale() { return 'en_US'; } }
+	require_once __DIR__ . '/../includes/functions-waiver.php'; // EU/UK withdrawal waiver (2026-09-25)
 	require_once __DIR__ . '/../includes/class-crawlertoll-traffic.php'; // W5 traffic card // masked_secret() (settings view, 2026-09-06)
 include __DIR__ . '/../admin/views/settings.php';
 $body = ob_get_clean();

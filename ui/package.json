@@ -3,14 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "CrawlerToll WordPress admin UI — React 19 + Tailwind, built with Vite into free-app + pro-app bundles.",
+  "description": "CrawlerToll WordPress admin UI \u2014 React 19 + Tailwind, built with Vite into free-app + pro-app bundles.",
   "scripts": {
     "build:free": "CT_APP=free vite build",
     "build:pro": "CT_APP=pro vite build",
     "build:unlock": "CT_APP=unlock vite build",
     "build": "npm run build:free && npm run build:pro && npm run build:unlock",
     "dev": "vite",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types --no-warnings --test tests/*.test.ts"
   },
   "dependencies": {
     "dompurify": "^3.4.11",
